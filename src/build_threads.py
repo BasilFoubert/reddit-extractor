@@ -7,6 +7,7 @@ from typing import TypedDict
 POSTS_PATH = Path("data/processed/r_ciso_posts.jsonl")
 COMMENTS_PATH = Path("data/processed/r_ciso_comments.jsonl")
 OUTPUT_PATH = Path("data/processed/r_ciso_threads.jsonl")
+MIN_SCORE = 3
 
 RawRecord = dict[str, str | int | float | bool | None]
 
@@ -90,7 +91,7 @@ def build_threads(posts: list[RawRecord], comments: list[RawRecord]) -> list[Thr
             comments=top_comments,
         ))
 
-    return threads
+    return [t for t in threads if t["comments"] and t["score"] >= MIN_SCORE]
 
 
 def write_jsonl(threads: list[Thread], output_path: Path) -> None:
@@ -114,6 +115,17 @@ def build_thread_file(
     return len(threads)
 
 
+def count_comments(comments: list[Comment]) -> int:
+    return sum(1 + count_comments(c.replies) for c in comments)
+
+
 if __name__ == "__main__":
-    n = build_thread_file()
-    print(f"{n} threads written to {OUTPUT_PATH}")
+    posts = load_jsonl(POSTS_PATH)
+    comments = load_jsonl(COMMENTS_PATH)
+    threads = build_threads(posts, comments)
+    write_jsonl(threads, OUTPUT_PATH)
+
+    total = sum(count_comments(t["comments"]) for t in threads)
+    print(f"{len(threads)} threads written to {OUTPUT_PATH}")
+    print(f"Total comments : {total}")
+    print(f"Average comments per post : {total / len(threads):.1f}")
