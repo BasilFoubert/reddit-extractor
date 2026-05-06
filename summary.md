@@ -32,28 +32,10 @@ Exemple à retravailler:
 si sur les 4300 commentaire je génére 10000 données structuré comme celle ci est-ce assez pour un premier clustering?
 
 {
-  "id": "comm_xyz",
-  "source": {
-    "verbatim": "We get 20+ cold calls a day, vendors 
-                 don't even know what my problems are",
-    "post_title": "How do vendors reach CISOs?",
-    "author": "TheAgreeableCow",
-    "score": 1,
-    "created_utc": 1486016221
-  },
-  "extraction": {
-    "pain_point_raw": "Les CISOs sont submergés de 
-                       sollicitations non ciblées",
-    "pain_point_reformulated": "Manque de personnalisation 
-                                des approches commerciales",
-    "reasoning": "Le commentaire mentionne explicitement 
-                  20+ appels/jour et l'incapacité des 
-                  vendors à connaître ses problèmes. 
-                  Le pain est réel et direct.",
-    "confidence": "high",
-    "is_pain_point": true
-  },
-  "embedding": [0.23, -0.87, ...]
+  "subreddit":"r/ciso",
+  "permalink": "/r/ciso/comments/1nii7l/cyber_security_skills_gap/",
+    "verbatim": "Les CISOs sont submergés de sollicitations non ciblées",
+    "pain_point_reformulated": "Manque de ..." 
 }
 
 ---
