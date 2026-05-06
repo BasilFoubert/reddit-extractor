@@ -1,10 +1,11 @@
+from __future__ import annotations
 import json
 import operator
 from pathlib import Path
-
+from typing import Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from typing_extensions import TypedDict, Annotated, NotRequired
+from typing_extensions import TypedDict, Annotated, NotRequired 
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
@@ -125,20 +126,18 @@ class ReflectionResult(BaseModel):
     approved: bool = Field(description="True si l'étape est correctement effectuée")
     feedback: str = Field(description="Si non approuvé, retours précis pour corriger. Vide si approuvé.")
 
-class SubComment(TypedDict):
+class Comment(TypedDict):
     text: str
-    sub_comments: list['SubComment'] | None
-
+    sub_comments: Optional[list[Comment]]
 class State(TypedDict):
     post_title: str
     post_descr: str
-    comment: str
-    sub_comments: list[SubComment]
+    comments: list[Comment]
     post_verbatims: list[str]
-    comment_verbatims: list[str]
-    pain_points: list[PainPoint]
     post_verbatim_feedback: str
+    comment_verbatims: list[str]
     comment_verbatim_feedback: str
+    pain_points: list[PainPoint]
     extraction_feedback: str
     reformulation_feedback: str
     post_verbatim_iterations: int
