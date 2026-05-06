@@ -1,11 +1,10 @@
 from __future__ import annotations
 import json
-import operator
+from operator import add
 from pathlib import Path
-from typing import Optional
+from typing import TypedDict, Optional, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from typing_extensions import TypedDict, Annotated, NotRequired 
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
@@ -133,11 +132,11 @@ class State(TypedDict):
     post_title: str
     post_descr: str
     comments: list[Comment]
-    post_verbatims: list[str]
+    post_verbatims: Annotated[list[str], add]
     post_verbatim_feedback: str
-    comment_verbatims: list[str]
+    comment_verbatims: Annotated[list[str], add]
     comment_verbatim_feedback: str
-    pain_points: list[PainPoint]
+    pain_points: Annotated[list[PainPoint], add]
     extraction_feedback: str
     reformulation_feedback: str
     post_verbatim_iterations: int
@@ -163,7 +162,7 @@ revisor_llm = llm.with_structured_output(Extraction)
 reflection_llm = llm.with_structured_output(ReflectionResult)
 
 
-def _flatten_sub_comments(subs: list[SubComment] | None, depth: int = 0) -> str:
+def _flatten_sub_comments(subs: list[Comment] | None, depth: int = 0) -> str:
     if not subs:
         return ""
     lines: list[str] = []
