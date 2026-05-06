@@ -17,28 +17,10 @@ OUTPUT_PATH = Path("data/processed/r_ciso_pain_points.jsonl")
 MODEL = "claude-sonnet-4-6"
 
 llm = init_chat_model(
-    MODEL,
+    MODEL
 )
 
-evaluator_prompt = ChatPromptTemplate.from_messages([
-    ("system",
-     """À partir de ce contenu uniquement, extrais chaque douleur
-exprimée mot pour mot par les auteurs. Pour chaque douleur reformule de manière
-claire la douleur ou le besoin exprimé, soit aussi spécifique que possible en
-restant concis. Ne cherche pas d'informations extérieures."""
-    ),          
-    ("human", "{post_and_comments}")
-])
 
-revisor_prompt = ChatPromptTemplate.from_messages([
-    ("system",
-     """Tu reçois un contenu source et une liste de pain points extraits.
-Vérifie pour chaque pain point que le verbatim est bien présent ou clairement impliqué dans le contenu source, et que la reformulation y correspond fidèlement sans rien ajouter.
-Supprime tout pain point inventé, vague ou mal reformulé.
-Retourne uniquement les pain points valides sans les modifier."""
-    ),
-    ("human", "{post_and_comments}\n\n---\n{pain_points}")
-])
 
 post_verbatim_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -48,6 +30,9 @@ N'invente rien et ne reformule pas : extrais uniquement ce qui est présent dans
     ),
     ("human", "Titre: {post_title}\n\nDescription: {post_descr}{feedback}")
 ])
+post_verbatim_pipe = post_verbatim_prompt | llm
+
+
 
 comment_verbatim_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -59,6 +44,9 @@ N'invente rien et ne reformule pas."""
     ("human",
      "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\nSous-commentaires :\n{sub_comments}{feedback}")
 ])
+comment_verbatim_pipe = comment_verbatim_prompt | llm
+
+
 
 post_verbatim_reflection_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -71,13 +59,16 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ),
     ("human", "Post:\nTitre: {post_title}\n\nDescription: {post_descr}\n\n---\n\nVerbatims extraits:\n{verbatims}")
 ])
+post_verbatim_reflection_pipe = post_verbatim_reflection_prompt | llm
+
+
 
 comment_verbatim_reflection_prompt = ChatPromptTemplate.from_messages([
     ("system",
      """Tu reçois (à titre de contexte) un post Reddit, puis un commentaire et ses sous-commentaires, ainsi que la liste des verbatims qui en ont été extraits.
 Vérifie que :
 - chaque verbatim provient bien du commentaire ou des sous-commentaires (PAS du post),
-- chaque verbatim est une citation mot pour mot ou très proche,
+- chaque verbatim est exactement une citation mot pour mot,
 - aucun passage porteur d'un pain point ou d'un besoin n'a été oublié,
 - aucun passage neutre, descriptif ou hors-sujet n'a été retenu à tort.
 Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sinon approved=false avec un feedback précis indiquant ce qui doit être corrigé."""
@@ -85,6 +76,8 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ("human",
      "Contexte (post, ne doit PAS être source des verbatims) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\nSous-commentaires :\n{sub_comments}\n\n---\n\nVerbatims extraits:\n{verbatims}")
 ])
+comment_verbatim_pipe = comment_verbatim_prompt | llm
+
 
 extraction_reflection_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -97,6 +90,7 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ),
     ("human", "Verbatims:\n{verbatims}\n\n---\n\nPain points extraits:\n{pain_points}")
 ])
+extraction_reflection_pipe = extraction_reflection_pipe | llm
 
 reformulation_reflection_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -110,6 +104,7 @@ Réponds approved=true uniquement si toutes les reformulations sont correctes. S
     ),
     ("human", "Pain points:\n{pain_points}")
 ])
+reformulation_reflection_pipe = reformulation_reflection_prompt | llm
 
 class PainPoint(BaseModel):
     verbatim: str = Field(description="Citation exacte de la douleur dans le texte source")
@@ -128,195 +123,60 @@ class ReflectionResult(BaseModel):
 class Comment(TypedDict):
     text: str
     sub_comments: Optional[list[Comment]]
+
+
 class State(TypedDict):
     post_title: str
     post_descr: str
     comments: list[Comment]
+
     post_verbatims: Annotated[list[str], add]
     post_verbatim_feedback: str
+    post_verbatim_iterations: int
+    
     comment_verbatims: Annotated[list[str], add]
     comment_verbatim_feedback: str
+    comment_verbatim_iterations: int
+    
+    extraction_feedback: str
+    extractor_iterations: int
+    
     pain_points: Annotated[list[PainPoint], add]
-    extraction_feedback: str
     reformulation_feedback: str
-    post_verbatim_iterations: int
-    comment_verbatim_iterations: int
-    extractor_iterations: int
 
-
-class StateUpdate(TypedDict, total=False):
-    post_verbatims: list[str]
-    comment_verbatims: list[str]
-    pain_points: list[PainPoint]
-    post_verbatim_feedback: str
-    comment_verbatim_feedback: str
-    extraction_feedback: str
-    reformulation_feedback: str
-    post_verbatim_iterations: int
-    comment_verbatim_iterations: int
-    extractor_iterations: int
 
 verbatim_llm = llm.with_structured_output(Verbatims)
 extractor_llm = llm.with_structured_output(Extraction)
 revisor_llm = llm.with_structured_output(Extraction)
 reflection_llm = llm.with_structured_output(ReflectionResult)
 
+def post_verbatim_reflector(state: State):
+    pass
 
-def _flatten_sub_comments(subs: list[Comment] | None, depth: int = 0) -> str:
-    if not subs:
-        return ""
-    lines: list[str] = []
-    for s in subs:
-        lines.append("  " * depth + f"- {s['text']}")
-        if s.get("sub_comments"):
-            lines.append(_flatten_sub_comments(s["sub_comments"], depth + 1))
-    return "\n".join(lines)
+def post_verbatim_reflector(state: State):
+    pass
 
+def comment_verbatim_extractor(state: State):
+    pass
 
-def _all_verbatims(state: State) -> str:
-    verbatims: list[str] = (state.get("post_verbatims") or []) + (state.get("comment_verbatims") or [])
-    return "\n".join(f"- {v}" for v in verbatims) or "(aucun)"
+def comment_verbatim_reflector(state: State):
+    pass
 
+def extractor(state: State):
+    pass
 
-def _pain_points_payload(state: State) -> str:
-    pain_points: list[PainPoint] = state.get("pain_points") or []
-    return json.dumps(
-        [p.model_dump() for p in pain_points],
-        ensure_ascii=False,
-        indent=2,
-    )
+def extraction_reflector(state: State):
+    pass
 
+def reformulation_reflector(state: State):
+    pass
 
-def _feedback_block(feedback: str) -> str:
-    return f"\n\n---\n\nRetours à corriger lors de cette nouvelle tentative :\n{feedback}" if feedback else ""
-
-
-def post_verbatim_extractor(state: State) -> StateUpdate:
-    feedback = state.get("post_verbatim_feedback") or ""
-    result = Verbatims.model_validate((post_verbatim_prompt | verbatim_llm).invoke({
-        "post_title": state["post_title"],
-        "post_descr": state["post_descr"],
-        "feedback": _feedback_block(feedback),
-    }))
-    return {
-        "post_verbatims": result.verbatims,
-        "post_verbatim_iterations": state.get("post_verbatim_iterations", 0) + 1,
-        "post_verbatim_feedback": "",
-    }
-
-
-def post_verbatim_reflector(state: State) -> StateUpdate:
-    verbatims_text = "\n".join(f"- {v}" for v in (state.get("post_verbatims") or [])) or "(aucun)"
-    result = ReflectionResult.model_validate((post_verbatim_reflection_prompt | reflection_llm).invoke({
-        "post_title": state["post_title"],
-        "post_descr": state["post_descr"],
-        "verbatims": verbatims_text,
-    }))
-    return {"post_verbatim_feedback": "" if result.approved else result.feedback}
-
-
-def comment_verbatim_extractor(state: State) -> StateUpdate:
-    sub_text = _flatten_sub_comments(state.get("sub_comments")) or "(aucun)"
-    feedback = state.get("comment_verbatim_feedback") or ""
-    result = Verbatims.model_validate((comment_verbatim_prompt | verbatim_llm).invoke({
-        "post_title": state["post_title"],
-        "post_descr": state["post_descr"],
-        "comment": state["comment"],
-        "sub_comments": sub_text,
-        "feedback": _feedback_block(feedback),
-    }))
-    return {
-        "comment_verbatims": result.verbatims,
-        "comment_verbatim_iterations": state.get("comment_verbatim_iterations", 0) + 1,
-        "comment_verbatim_feedback": "",
-    }
-
-
-def comment_verbatim_reflector(state: State) -> StateUpdate:
-    sub_text = _flatten_sub_comments(state.get("sub_comments")) or "(aucun)"
-    verbatims_text = "\n".join(f"- {v}" for v in (state.get("comment_verbatims") or [])) or "(aucun)"
-    result = ReflectionResult.model_validate((comment_verbatim_reflection_prompt | reflection_llm).invoke({
-        "post_title": state["post_title"],
-        "post_descr": state["post_descr"],
-        "comment": state["comment"],
-        "sub_comments": sub_text,
-        "verbatims": verbatims_text,
-    }))
-    return {"comment_verbatim_feedback": "" if result.approved else result.feedback}
-
-
-def extractor(state: State) -> StateUpdate:
-    feedbacks: list[str] = []
-    if state.get("extraction_feedback"):
-        feedbacks.append(f"[Extraction] {state['extraction_feedback']}")
-    if state.get("reformulation_feedback"):
-        feedbacks.append(f"[Reformulation] {state['reformulation_feedback']}")
-    feedback_block = (
-        "\n\nRetours à corriger lors de cette nouvelle tentative :\n" + "\n".join(feedbacks)
-        if feedbacks else ""
-    )
-    context = f"Verbatims candidats :\n{_all_verbatims(state)}{feedback_block}"
-    result = Extraction.model_validate((evaluator_prompt | extractor_llm).invoke({"post_and_comments": context}))
-    return {
-        "pain_points": result.pain_points,
-        "extractor_iterations": state.get("extractor_iterations", 0) + 1,
-        "extraction_feedback": "",
-        "reformulation_feedback": "",
-    }
-
-
-def extraction_reflector(state: State) -> StateUpdate:
-    result = ReflectionResult.model_validate((extraction_reflection_prompt | reflection_llm).invoke({
-        "verbatims": _all_verbatims(state),
-        "pain_points": _pain_points_payload(state),
-    }))
-    return {"extraction_feedback": "" if result.approved else result.feedback}
-
-
-def reformulation_reflector(state: State) -> StateUpdate:
-    result = ReflectionResult.model_validate((reformulation_reflection_prompt | reflection_llm).invoke({
-        "pain_points": _pain_points_payload(state),
-    }))
-    return {"reformulation_feedback": "" if result.approved else result.feedback}
-
-
-def revisor(state: State) -> StateUpdate:
-    context = f"Titre: {state['post_title']}\n\nDescription: {state['post_descr']}\n\nCommentaire: {state['comment']}"
-    payload = _pain_points_payload(state)
-    result = Extraction.model_validate((revisor_prompt | revisor_llm).invoke({
-        "post_and_comments": context,
-        "pain_points": payload,
-    }))
-    return {"pain_points": result.pain_points}
-
-
-def after_post_verbatim_reflection(state: State) -> str:
-    if state.get("post_verbatim_feedback") and state.get("post_verbatim_iterations", 0) < MAX_REFLECTION_ITER:
-        return "post_verbatim_extractor"
-    return "comment_verbatim_extractor"
-
-
-def after_comment_verbatim_reflection(state: State) -> str:
-    if state.get("comment_verbatim_feedback") and state.get("comment_verbatim_iterations", 0) < MAX_REFLECTION_ITER:
-        return "comment_verbatim_extractor"
-    return "extractor"
-
-
-def after_extraction_reflection(state: State) -> str:
-    if not state.get("pain_points"):
-        return END
-    if state.get("extraction_feedback") and state.get("extractor_iterations", 0) < MAX_REFLECTION_ITER:
-        return "extractor"
-    return "reformulation_reflector"
-
-
-def after_reformulation_reflection(state: State) -> str:
-    if state.get("reformulation_feedback") and state.get("extractor_iterations", 0) < MAX_REFLECTION_ITER:
-        return "extractor"
-    return "revisor"
+def revisor(state: State):
+    pass
 
 
 workflow = StateGraph(State)
+
 
 # Nodes
 workflow.add_node("post_verbatim_extractor", post_verbatim_extractor)
