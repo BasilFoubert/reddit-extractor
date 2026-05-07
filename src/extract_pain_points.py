@@ -183,10 +183,8 @@ workflow.add_node("post_verbatim_extractor", post_verbatim_extractor)
 workflow.add_node("post_verbatim_reflector", post_verbatim_reflector)
 workflow.add_node("comment_verbatim_extractor", comment_verbatim_extractor)
 workflow.add_node("comment_verbatim_reflector", comment_verbatim_reflector)
-workflow.add_node("extractor", extractor)
 workflow.add_node("extraction_reflector", extraction_reflector)
 workflow.add_node("reformulation_reflector", reformulation_reflector)
-workflow.add_node("revisor", revisor)
 
 # Edges
 workflow.add_edge(START, "post_verbatim_extractor")
