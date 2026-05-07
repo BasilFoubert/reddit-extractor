@@ -11,11 +11,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.utils import load_jsonl
 
 
-
 THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
 OUTPUT_PATH = Path("data/processed/r_ciso_pain_points.jsonl")
-
-
 
 
 post_verbatim_prompt = ChatPromptTemplate.from_messages(
@@ -181,6 +178,7 @@ class State(TypedDict):
     pain_points: Annotated[list[PainPoint], add]
     reformulation_feedback: str
 
+
 class States(TypedDict):
     states_list: list[State]
 
@@ -199,23 +197,31 @@ class States(TypedDict):
 #
 
 
-    
 class Workflow:
     MODEL = "claude-sonnet-4-6"
     MAX_REFLECTION_ITER = 2
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
-        self.comment_verbatim_pipe = comment_verbatim_prompt | self.llm.with_structured_output(Verbatims)
+        self.comment_verbatim_pipe = (
+            comment_verbatim_prompt | self.llm.with_structured_output(Verbatims)
+        )
         self.states: list[State] = self.build_states()
 
+    def post_verbatim_extractor(self, state: State):
+        pass
 
-    def post_verbatim_extractor(self, state: State): pass
-    def post_verbatim_reflector(self, state: State): pass
-    def comment_verbatim_reflector(self, state: State): pass
-    def extraction_reflector(self, state: State): pass
-    def reformulation_reflector(self, state: State): pass
+    def post_verbatim_reflector(self, state: State):
+        pass
 
+    def comment_verbatim_reflector(self, state: State):
+        pass
+
+    def extraction_reflector(self, state: State):
+        pass
+
+    def reformulation_reflector(self, state: State):
+        pass
 
     @staticmethod
     def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
@@ -224,17 +230,25 @@ class Workflow:
             for comment in comments:
                 all_comments.append(comment)
                 if comment.get("sub_comments"):
-                    all_comments.extend(Workflow.get_all_comments(comment["sub_comments"]))
+                    all_comments.extend(
+                        Workflow.get_all_comments(comment["sub_comments"])
+                    )
         return all_comments
-
 
     @staticmethod
     def spawn_comment_workers(state: State) -> list[Send]:
         return [
-            Send("comment_verbatim_extractor", {"post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c, "feedback": ""})
+            Send(
+                "comment_verbatim_extractor",
+                {
+                    "post_title": state["post_title"],
+                    "post_descr": state["post_descr"],
+                    "comment": c,
+                    "feedback": "",
+                },
+            )
             for c in Workflow.get_all_comments(state["comments"])
         ]
-
 
     def comment_verbatim_extractor(self, state: CommentWorkerState) -> dict:
         response = self.comment_verbatim_pipe.invoke(
@@ -247,7 +261,6 @@ class Workflow:
         )
         return {"comment_verbatims": response.verbatims}
 
-
     @staticmethod
     def build_states() -> list[State]:
         return load_jsonl(THREADS_PATH)
@@ -259,7 +272,9 @@ class Workflow:
     def build_graph(self):
         # Inner graph: one post → parallel comments
         post_workflow = StateGraph(State)
-        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
+        post_workflow.add_node(
+            "comment_verbatim_extractor", self.comment_verbatim_extractor
+        )
         post_workflow.add_conditional_edges(START, self.spawn_comment_workers)
         post_workflow.add_edge("comment_verbatim_extractor", END)
         post_graph = post_workflow.compile()
