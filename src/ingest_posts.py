@@ -35,6 +35,7 @@ class Post(TypedDict):
 
 # --- Functions ---
 
+
 def load_jsonl(path: str | Path) -> list[RawRecord]:
     records: list[RawRecord] = []
     with open(path, encoding="utf-8") as f:
@@ -45,7 +46,9 @@ def load_jsonl(path: str | Path) -> list[RawRecord]:
     return records
 
 
-def filter_fields(records: list[RawRecord], fields: list[str] = FIELDS_TO_KEEP) -> list[RawRecord]:
+def filter_fields(
+    records: list[RawRecord], fields: list[str] = FIELDS_TO_KEEP
+) -> list[RawRecord]:
     return [{k: r[k] for k in fields if k in r} for r in records]
 
 

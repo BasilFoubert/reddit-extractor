@@ -11,6 +11,7 @@ MIN_SCORE = 3
 
 RawRecord = dict[str, str | int | float | bool | None]
 
+
 @dataclass
 class Comment:
     id: str
@@ -18,7 +19,7 @@ class Comment:
     body: str
     score: int
     created_utc: int
-    replies: list[Comment] = field(default_factory=list) # pyright: ignore[reportUnknownVariableType]
+    replies: list[Comment] = field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
 
 
 class Thread(TypedDict):
@@ -66,7 +67,9 @@ def build_threads(posts: list[RawRecord], comments: list[RawRecord]) -> list[Thr
         children = by_parent.get(f"t1_{comment_id}", [])
         return [
             build_comment(child, build_replies(str(child["id"])))
-            for child in sorted(children, key=lambda x: int(x.get("score") or 0), reverse=True)
+            for child in sorted(
+                children, key=lambda x: int(x.get("score") or 0), reverse=True
+            )
         ]
 
     threads: list[Thread] = []
@@ -75,21 +78,25 @@ def build_threads(posts: list[RawRecord], comments: list[RawRecord]) -> list[Thr
         top_level = by_parent.get(f"t3_{post_id}", [])
         top_comments = [
             build_comment(c, build_replies(str(c["id"])))
-            for c in sorted(top_level, key=lambda x: int(x.get("score") or 0), reverse=True)
+            for c in sorted(
+                top_level, key=lambda x: int(x.get("score") or 0), reverse=True
+            )
         ]
-        threads.append(Thread(
-            id=post_id,
-            author=str(post.get("author", "")),
-            title=str(post.get("title", "")),
-            selftext=str(post.get("selftext", "")),
-            score=int(post.get("score") or 0),
-            upvote_ratio=float(post.get("upvote_ratio") or 0.0),
-            num_comments=int(post.get("num_comments") or 0),
-            created_utc=int(post.get("created_utc") or 0),
-            subreddit=str(post.get("subreddit", "")),
-            permalink=str(post.get("permalink", "")),
-            comments=top_comments,
-        ))
+        threads.append(
+            Thread(
+                id=post_id,
+                author=str(post.get("author", "")),
+                title=str(post.get("title", "")),
+                selftext=str(post.get("selftext", "")),
+                score=int(post.get("score") or 0),
+                upvote_ratio=float(post.get("upvote_ratio") or 0.0),
+                num_comments=int(post.get("num_comments") or 0),
+                created_utc=int(post.get("created_utc") or 0),
+                subreddit=str(post.get("subreddit", "")),
+                permalink=str(post.get("permalink", "")),
+                comments=top_comments,
+            )
+        )
 
     return [t for t in threads if t["comments"] and t["score"] >= MIN_SCORE]
 
