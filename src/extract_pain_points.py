@@ -30,21 +30,21 @@ N'invente rien et ne reformule pas : extrais uniquement ce qui est présent dans
     ),
     ("human", "Titre: {post_title}\n\nDescription: {post_descr}{feedback}")
 ])
-post_verbatim_pipe = post_verbatim_prompt | llm
 
 
 
 comment_verbatim_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     """Tu reçois (à titre de contexte uniquement) un post Reddit, puis un commentaire et ses sous-commentaires.
-Découpe UNIQUEMENT le commentaire et ses sous-commentaires en un ou plusieurs verbatims. N'extrais AUCUN verbatim du post — il sert seulement de contexte.
+     """Tu es spécialisé en product management et tu cherches des besoins ou des douleurs de clients sur reddit.
+Tu reçois (à titre de contexte uniquement) un post Reddit, puis un commentaire.
+Découpe UNIQUEMENT le commentaire en un ou plusieurs verbatims. N'extrais AUCUN verbatim du post — il sert seulement de contexte.
 Chaque verbatim est une citation brute, mot pour mot, susceptible de contenir un pain point ou un besoin.
+Chaque verbatim retenu doit contenir une douleur ou un besoin exprimé implicitement ou explicitement 
 N'invente rien et ne reformule pas."""
     ),
     ("human",
-     "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\nSous-commentaires :\n{sub_comments}{feedback}")
+     "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\n{feedback}")
 ])
-comment_verbatim_pipe = comment_verbatim_prompt | llm
 
 
 
@@ -59,7 +59,6 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ),
     ("human", "Post:\nTitre: {post_title}\n\nDescription: {post_descr}\n\n---\n\nVerbatims extraits:\n{verbatims}")
 ])
-post_verbatim_reflection_pipe = post_verbatim_reflection_prompt | llm
 
 
 
@@ -76,7 +75,6 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ("human",
      "Contexte (post, ne doit PAS être source des verbatims) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\nSous-commentaires :\n{sub_comments}\n\n---\n\nVerbatims extraits:\n{verbatims}")
 ])
-comment_verbatim_pipe = comment_verbatim_prompt | llm
 
 
 extraction_reflection_prompt = ChatPromptTemplate.from_messages([
@@ -90,7 +88,6 @@ Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sin
     ),
     ("human", "Verbatims:\n{verbatims}\n\n---\n\nPain points extraits:\n{pain_points}")
 ])
-extraction_reflection_pipe = extraction_reflection_pipe | llm
 
 reformulation_reflection_prompt = ChatPromptTemplate.from_messages([
     ("system",
@@ -104,7 +101,6 @@ Réponds approved=true uniquement si toutes les reformulations sont correctes. S
     ),
     ("human", "Pain points:\n{pain_points}")
 ])
-reformulation_reflection_pipe = reformulation_reflection_prompt | llm
 
 class PainPoint(BaseModel):
     verbatim: str = Field(description="Citation exacte de la douleur dans le texte source")
@@ -123,6 +119,12 @@ class ReflectionResult(BaseModel):
 class Comment(TypedDict):
     text: str
     sub_comments: Optional[list[Comment]]
+
+class CommentWorkerState(TypedDict):
+    post_title: str
+    post_descr: str
+    comment: Comment
+    feedback: str
 
 
 class State(TypedDict):
@@ -145,24 +147,29 @@ class State(TypedDict):
     reformulation_feedback: str
 
 
-verbatim_llm = llm.with_structured_output(Verbatims)
+verbatim_structured_llm = llm.with_structured_output(Verbatims)
 extractor_llm = llm.with_structured_output(Extraction)
 revisor_llm = llm.with_structured_output(Extraction)
 reflection_llm = llm.with_structured_output(ReflectionResult)
 
-def post_verbatim_reflector(state: State):
+
+post_verbatim_pipe = post_verbatim_prompt | llm
+comment_verbatim_pipe = comment_verbatim_prompt | verbatim_structured_llm
+post_verbatim_reflection_pipe = post_verbatim_reflection_prompt | llm
+comment_verbatim_reflection_pipe = comment_verbatim_reflection_prompt | llm
+extraction_reflection_pipe = extraction_reflection_prompt | llm
+reformulation_reflection_pipe = reformulation_reflection_prompt | llm
+
+
+
+
+def post_verbatim_extractor(state: State):
     pass
 
 def post_verbatim_reflector(state: State):
-    pass
-
-def comment_verbatim_extractor(state: State):
     pass
 
 def comment_verbatim_reflector(state: State):
-    pass
-
-def extractor(state: State):
     pass
 
 def extraction_reflector(state: State):
@@ -171,47 +178,70 @@ def extraction_reflector(state: State):
 def reformulation_reflector(state: State):
     pass
 
-def revisor(state: State):
-    pass
+def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
+    """Recursively extracts all comments including sub-comments."""
+    all_comments = []
+    if comments is not None:
+        for comment in comments:
+            all_comments.append(comment)
+            if comment.get("sub_comments"):
+                all_comments.extend(get_all_comments(comment["sub_comments"]))
+    return all_comments
+
+def spawn_comment_workers(state: State) -> list[Send]:
+    """Returns one Send per comment — creates N parallel branches."""
+    all_comments = get_all_comments(state["comments"])
+    return [Send("comment_verbatim_extractor", {"post_title": state["post_title"], "post_descr": state["post_descr"], "comment" : c, "feedback":""}) for c in all_comments]
+
+def comment_verbatim_extractor(state: CommentWorkerState)->dict:
+    """Runs once per comment & sub_comments, all in parallel."""
+    response = comment_verbatim_pipe.invoke({
+        "post_title": state["post_title"], 
+        "post_descr": state["post_descr"], 
+        "comment": state["comment"]["text"],
+        "feedback": state["feedback"]
+    })
+    return {"comment_verbatims": response.verbatims }
 
 
 workflow = StateGraph(State)
 
 
 # Nodes
-workflow.add_node("post_verbatim_extractor", post_verbatim_extractor)
-workflow.add_node("post_verbatim_reflector", post_verbatim_reflector)
+# workflow.add_node("post_verbatim_extractor", post_verbatim_extractor)
+# workflow.add_node("post_verbatim_reflector", post_verbatim_reflector)
 workflow.add_node("comment_verbatim_extractor", comment_verbatim_extractor)
-workflow.add_node("comment_verbatim_reflector", comment_verbatim_reflector)
-workflow.add_node("extraction_reflector", extraction_reflector)
-workflow.add_node("reformulation_reflector", reformulation_reflector)
+# workflow.add_node("comment_verbatim_reflector", comment_verbatim_reflector)
+# workflow.add_node("extraction_reflector", extraction_reflector)
+# workflow.add_node("reformulation_reflector", reformulation_reflector)
 
 # Edges
-workflow.add_edge(START, "post_verbatim_extractor")
-workflow.add_edge("post_verbatim_extractor", "post_verbatim_reflector")
-workflow.add_conditional_edges(
-    "post_verbatim_reflector",
-    after_post_verbatim_reflection,
-    {"post_verbatim_extractor": "post_verbatim_extractor", "comment_verbatim_extractor": "comment_verbatim_extractor"},
-)
-workflow.add_edge("comment_verbatim_extractor", "comment_verbatim_reflector")
-workflow.add_conditional_edges(
-    "comment_verbatim_reflector",
-    after_comment_verbatim_reflection,
-    {"comment_verbatim_extractor": "comment_verbatim_extractor", "extractor": "extractor"},
-)
-workflow.add_edge("extractor", "extraction_reflector")
-workflow.add_conditional_edges(
-    "extraction_reflector",
-    after_extraction_reflection,
-    {"extractor": "extractor", "reformulation_reflector": "reformulation_reflector", END: END},
-)
-workflow.add_conditional_edges(
-    "reformulation_reflector",
-    after_reformulation_reflection,
-    {"extractor": "extractor", "revisor": "revisor"},
-)
-workflow.add_edge("revisor", END)
+workflow.add_conditional_edges(START, spawn_comment_workers)
+# workflow.add_edge(START, "post_verbatim_extractor")
+# workflow.add_edge("post_verbatim_extractor", "post_verbatim_reflector")
+# workflow.add_conditional_edges(
+#     "post_verbatim_reflector",
+#     after_post_verbatim_reflection,
+#     {"post_verbatim_extractor": "post_verbatim_extractor", "comment_verbatim_extractor": "comment_verbatim_extractor"},
+# )
+# workflow.add_edge("comment_verbatim_extractor", "comment_verbatim_reflector")
+# workflow.add_conditional_edges(
+#     "comment_verbatim_reflector",
+#     after_comment_verbatim_reflection,
+#     {"comment_verbatim_extractor": "comment_verbatim_extractor", "extractor": "extractor"},
+# )
+# workflow.add_edge("extractor", "extraction_reflector")
+# workflow.add_conditional_edges(
+#     "extraction_reflector",
+#     after_extraction_reflection,
+#     {"extractor": "extractor", "reformulation_reflector": "reformulation_reflector", END: END},
+# )
+# workflow.add_conditional_edges(
+#     "reformulation_reflector",
+#     after_reformulation_reflection,
+#     {"extractor": "extractor", "revisor": "revisor"},
+# )
+# workflow.add_edge("revisor", END)
 
 # Compile the graph
 graph = workflow.compile()
