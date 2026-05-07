@@ -210,56 +210,33 @@ class Workflow:
         self.states: list[State] = self.build_states()
 
 
-    def post_verbatim_extractor(state: State):
-        pass
+    def post_verbatim_extractor(self, state: State): pass
+    def post_verbatim_reflector(self, state: State): pass
+    def comment_verbatim_reflector(self, state: State): pass
+    def extraction_reflector(self, state: State): pass
+    def reformulation_reflector(self, state: State): pass
 
 
-    def post_verbatim_reflector(state: State):
-        pass
-
-
-    def comment_verbatim_reflector(state: State):
-        pass
-
-
-    def extraction_reflector(state: State):
-        pass
-
-
-    def reformulation_reflector(state: State):
-        pass
-
-
+    @staticmethod
     def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
-        """Recursively extracts all comments including sub-comments."""
         all_comments = []
-        if comments is not None:
+        if comments:
             for comment in comments:
                 all_comments.append(comment)
                 if comment.get("sub_comments"):
-                    all_comments.extend(get_all_comments(comment["sub_comments"]))
+                    all_comments.extend(Workflow.get_all_comments(comment["sub_comments"]))
         return all_comments
 
 
+    @staticmethod
     def spawn_comment_workers(state: State) -> list[Send]:
-        """Returns one Send per comment — creates N parallel branches."""
-        all_comments = get_all_comments(state["comments"])
         return [
-            Send(
-                "comment_verbatim_extractor",
-                {
-                    "post_title": state["post_title"],
-                    "post_descr": state["post_descr"],
-                    "comment": c,
-                    "feedback": "",
-                },
-            )
-            for c in all_comments
+            Send("comment_verbatim_extractor", {"post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c, "feedback": ""})
+            for c in Workflow.get_all_comments(state["comments"])
         ]
 
 
-    def comment_verbatim_extractor(state: CommentWorkerState) -> dict:
-        """Runs once per comment & sub_comments, all in parallel."""
+    def comment_verbatim_extractor(self, state: CommentWorkerState) -> dict:
         response = self.comment_verbatim_pipe.invoke(
             {
                 "post_title": state["post_title"],
@@ -271,14 +248,25 @@ class Workflow:
         return {"comment_verbatims": response.verbatims}
 
 
-    def build_states():
-        data = load_jsonl("tests/data/small_subreddit.jsonl")
-        for state in states:
-            self.states.append(json)
-        return data
+    @staticmethod
+    def build_states() -> list[State]:
+        return load_jsonl(THREADS_PATH)
 
-    def build_graph():
-        workflow = StateGraph(State)
-        workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
-        workflow.add_conditional_edges(START, spawn_comment_workers)
-        graph = workflow.compile()
+    @staticmethod
+    def spawn_post_workers(state: States) -> list[Send]:
+        return [Send("process_post", s) for s in state["states_list"]]
+
+    def build_graph(self):
+        # Inner graph: one post → parallel comments
+        post_workflow = StateGraph(State)
+        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
+        post_workflow.add_conditional_edges(START, self.spawn_comment_workers)
+        post_workflow.add_edge("comment_verbatim_extractor", END)
+        post_graph = post_workflow.compile()
+
+        # Outer graph: parallel posts
+        outer_workflow = StateGraph(States)
+        outer_workflow.add_node("process_post", post_graph)
+        outer_workflow.add_conditional_edges(START, self.spawn_post_workers)
+        outer_workflow.add_edge("process_post", END)
+        return outer_workflow.compile()
