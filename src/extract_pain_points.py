@@ -52,18 +52,13 @@ Do not invent anything: the verbatim must exist as-is in the comment.""",
 
 
 class PainPoint(BaseModel):
-    verbatim: str = Field(
-        description="Citation exacte de la douleur dans le texte source"
-    )
-    pain_point_reformulated: str = Field(
-        description="Reformulation claire et concise de la douleur"
-    )
+    post_id: str = ""
+    verbatim: str = Field(description="Citation exacte de la douleur dans le texte source")
+    pain_point_reformulated: str = Field(description="Reformulation claire et concise de la douleur")
 
 
 class PainPoints(BaseModel):
     pain_points: list[PainPoint]
-
-
 
 
 class Comment(TypedDict):
@@ -72,12 +67,14 @@ class Comment(TypedDict):
 
 
 class CommentWorkerState(TypedDict):
+    post_id: str
     post_title: str
     post_descr: str
     comment: Comment
 
 
 class State(TypedDict):
+    post_id: str
     post_title: str
     post_descr: str
     comments: list[Comment]
@@ -105,7 +102,10 @@ class Workflow:
             "post_title": state["post_title"],
             "post_descr": state["post_descr"],
         })
-        return {"pain_points": response.pain_points}
+        return {"pain_points": [
+            PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+            for pp in response.pain_points
+        ]}
 
     @staticmethod
     def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
@@ -122,7 +122,7 @@ class Workflow:
     @staticmethod
     def spawn_comment_workers(state: State) -> list[Send]:
         return [
-            Send("comment_verbatim_extractor", {"post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c})
+            Send("comment_verbatim_extractor", {"post_id": state["post_id"], "post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c})
             for c in Workflow.get_all_comments(state["comments"])
         ]
 
@@ -132,7 +132,10 @@ class Workflow:
             "post_descr": state["post_descr"],
             "comment": state["comment"]["text"],
         })
-        return {"pain_points": response.pain_points}
+        return {"pain_points": [
+            PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+            for pp in response.pain_points
+        ]}
 
     @staticmethod
     def build_states() -> list[State]:
@@ -141,6 +144,7 @@ class Workflow:
 
         return [
             {
+                "post_id": p["id"],
                 "post_title": p["title"], "post_descr": p.get("selftext", ""),
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
                 "pain_points": [],
@@ -153,7 +157,7 @@ class Workflow:
         return [Send("process_post", s) for s in state["states_list"]]
 
     def build_graph(self):
-        # Inner graph: one post → parallel comments + post extraction
+        # Inner graph: one post → parallel comments + post extraction → aggregate
         post_workflow = StateGraph(State)
         post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor)
         post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
@@ -179,9 +183,20 @@ if __name__ == "__main__":
     THREADS_PATH_TEST = Path("tests/data/small_subreddit_verbatims.jsonl")
     wf = Workflow()
     wf.build_graph()
+    from src.utils import save_jsonl
+    from collections import defaultdict
     result = wf.built_graph.invoke({"states_list": wf.states, "pain_points": []})
-    print("=== PAIN POINTS ===")
+    grouped = defaultdict(list)
     for pp in result["pain_points"]:
-        print(f"  verbatim     : {pp.verbatim}")
-        print(f"  reformulation: {pp.pain_point_reformulated}")
-        print()
+        grouped[pp.post_id].append(pp)
+    for post_id, pps in grouped.items():
+        print(f"\n=== {post_id} ===")
+        for pp in pps:
+            print(f"  verbatim     : {pp.verbatim}")
+            print(f"  reformulation: {pp.pain_point_reformulated}")
+    raw = load_jsonl(THREADS_PATH)
+    enriched = [
+        {**post, "pain_points": [pp.model_dump() for pp in grouped.get(post["id"], [])]}
+        for post in raw
+    ]
+    save_jsonl(enriched, THREADS_PATH_TEST)
