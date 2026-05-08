@@ -263,7 +263,20 @@ class Workflow:
 
     @staticmethod
     def build_states() -> list[State]:
-        return load_jsonl(THREADS_PATH)
+        def _map_comment(c: dict) -> Comment:
+            return {"text": c["body"], "sub_comments": [_map_comment(r) for r in c.get("replies", [])]}
+
+        return [
+            {
+                "post_title": p["title"], "post_descr": p.get("selftext", ""),
+                "comments": [_map_comment(c) for c in p.get("comments", [])],
+                "post_verbatims": [], "post_verbatim_feedback": "", "post_verbatim_iterations": 0,
+                "comment_verbatims": [], "comment_verbatim_feedback": "", "comment_verbatim_iterations": 0,
+                "extraction_feedback": "", "extractor_iterations": 0,
+                "pain_points": [], "reformulation_feedback": "",
+            }
+            for p in load_jsonl(THREADS_PATH)
+        ]
 
     @staticmethod
     def spawn_post_workers(state: States) -> list[Send]:
@@ -285,3 +298,15 @@ class Workflow:
         outer_workflow.add_conditional_edges(START, self.spawn_post_workers)
         outer_workflow.add_edge("process_post", END)
         return outer_workflow.compile()
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    Workflow.MODEL = "claude-haiku-4-5"
+    THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
+    wf = Workflow()
+    graph = wf.build_graph()
+    result = graph.invoke({"states_list": wf.states})
+    print(result)
