@@ -158,8 +158,7 @@ class Workflow:
                 "post_id": p["id"],
                 "post_title": p["title"], "post_descr": p.get("selftext", ""),
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
-                "pain_points": [],
-            }
+                "pain_points": [], }
             for p in load_jsonl(THREADS_PATH)
         ]
 
@@ -168,7 +167,7 @@ class Workflow:
         return [Send("process_post", s) for s in state["states_list"]]
 
     def build_graph(self):
-        # Inner graph: one post → parallel comments + post extraction → aggregate
+        # Inner graph: one post → parallel comments + post extraction
         post_workflow = StateGraph(State)
         post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor)
         post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
@@ -183,28 +182,38 @@ class Workflow:
         outer_workflow.add_node("process_post", post_graph)
         outer_workflow.add_conditional_edges(START, self.spawn_post_workers)
         outer_workflow.add_edge("process_post", END)
-        self.built_graph= outer_workflow.compile()
+        self.built_graph = outer_workflow.compile()
 
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
-    THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
+    # THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
+    # THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
+    THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
+    THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
     wf = Workflow()
     wf.build_graph()
     from src.utils import save_jsonl
     from collections import defaultdict
-    result = wf.built_graph.invoke({"states_list": wf.states, "pain_points": []})
+    from tqdm import tqdm
+
+    all_pain_points: list[PainPoint] = []
+
+    with tqdm(total=len(wf.states), desc="Analyzing posts", unit="post") as pbar:
+        for event in wf.built_graph.stream(
+            {"states_list": wf.states, "pain_points": []},
+            stream_mode="updates",
+        ):
+            if "process_post" in event:
+                all_pain_points.extend(event["process_post"].get("pain_points", []))
+                pbar.update(1)
+
     grouped = defaultdict(list)
-    for pp in result["pain_points"]:
+    for pp in all_pain_points:
         grouped[pp.post_id].append(pp)
-    for post_id, pps in grouped.items():
-        print(f"\n=== {post_id} ===")
-        for pp in pps:
-            print(f"  verbatim     : {pp.verbatim}")
-            print(f"  reformulation: {pp.pain_point_reformulated}")
+
     raw = load_jsonl(THREADS_PATH)
     enriched = [
         {**post, "pain_points": [pp.model_dump() for pp in grouped.get(post["id"], [])]}
