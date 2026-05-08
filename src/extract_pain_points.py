@@ -26,7 +26,7 @@ For each one:
 - reformulation: express the pain or need clearly and concisely in English, with enough context to be understood without reading the post. Minimum words, maximum clarity.
 Do not invent anything: the verbatim must exist as-is in the text.""",
         ),
-        ("human", "Titre: {post_title}\n\nDescription: {post_descr}{feedback}"),
+        ("human", "Titre: {post_title}\n\nDescription: {post_descr}"),
     ]
 )
 
@@ -44,84 +44,11 @@ Do not invent anything: the verbatim must exist as-is in the comment.""",
         ),
         (
             "human",
-            "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\n{feedback}",
+            "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}",
         ),
     ]
 )
 
-
-post_verbatim_reflection_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Tu reçois le contenu d'un post Reddit (titre + description) et la liste des verbatims qui en ont été extraits.
-Vérifie que :
-- chaque verbatim provient bien du post (citation mot pour mot ou très proche),
-- aucun passage du post porteur d'un pain point ou d'un besoin n'a été oublié,
-- aucun passage neutre, descriptif ou hors-sujet n'a été retenu à tort.
-Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sinon approved=false avec un feedback précis indiquant ce qui doit être corrigé.""",
-        ),
-        (
-            "human",
-            "Post:\nTitre: {post_title}\n\nDescription: {post_descr}\n\n---\n\nVerbatims extraits:\n{verbatims}",
-        ),
-    ]
-)
-
-
-comment_verbatim_reflection_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Tu reçois (à titre de contexte) un post Reddit, puis un commentaire et ses sous-commentaires, ainsi que la liste des verbatims qui en ont été extraits.
-Vérifie que :
-- chaque verbatim provient bien du commentaire ou des sous-commentaires (PAS du post),
-- chaque verbatim est exactement une citation mot pour mot,
-- aucun passage porteur d'un pain point ou d'un besoin n'a été oublié,
-- aucun passage neutre, descriptif ou hors-sujet n'a été retenu à tort.
-Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sinon approved=false avec un feedback précis indiquant ce qui doit être corrigé.""",
-        ),
-        (
-            "human",
-            "Contexte (post, ne doit PAS être source des verbatims) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}\n\nSous-commentaires :\n{sub_comments}\n\n---\n\nVerbatims extraits:\n{verbatims}",
-        ),
-    ]
-)
-
-
-extraction_reflection_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Tu reçois la liste des verbatims candidats (extraits du post et des commentaires) et la liste des pain points qui en ont été extraits.
-Vérifie que :
-- chaque pain point correspond bien à un verbatim présent dans la source (pas d'invention),
-- aucun verbatim porteur d'un pain point ou d'un besoin n'a été oublié,
-- aucun verbatim sans pain point ni besoin n'a été retenu à tort.
-Réponds approved=true uniquement si l'extraction est exhaustive et fidèle. Sinon approved=false avec un feedback précis indiquant ce qui doit être corrigé.""",
-        ),
-        (
-            "human",
-            "Verbatims:\n{verbatims}\n\n---\n\nPain points extraits:\n{pain_points}",
-        ),
-    ]
-)
-
-reformulation_reflection_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Tu reçois une liste de pain points (verbatim + reformulation).
-Vérifie que chaque reformulation est :
-- claire,
-- spécifique,
-- concise,
-- fidèle au verbatim sans rien y ajouter.
-Réponds approved=true uniquement si toutes les reformulations sont correctes. Sinon approved=false avec un feedback précis indiquant lesquelles doivent être corrigées et comment.""",
-        ),
-        ("human", "Pain points:\n{pain_points}"),
-    ]
-)
 
 
 class PainPoint(BaseModel):
@@ -138,12 +65,6 @@ class PainPoints(BaseModel):
 
 
 
-class ReflectionResult(BaseModel):
-    approved: bool = Field(description="True si l'étape est correctement effectuée")
-    feedback: str = Field(
-        description="Si non approuvé, retours précis pour corriger. Vide si approuvé."
-    )
-
 
 class Comment(TypedDict):
     text: str
@@ -154,7 +75,6 @@ class CommentWorkerState(TypedDict):
     post_title: str
     post_descr: str
     comment: Comment
-    feedback: str
 
 
 class State(TypedDict):
@@ -162,9 +82,6 @@ class State(TypedDict):
     post_descr: str
     comments: list[Comment]
     pain_points: Annotated[list[PainPoint], add]
-    extraction_feedback: str
-    extractor_iterations: int
-    reformulation_feedback: str
 
 
 class States(TypedDict):
@@ -172,23 +89,10 @@ class States(TypedDict):
     pain_points: Annotated[list[PainPoint], add]
 
 
-# verbatim_structured_llm = llm.with_structured_output(Verbatims)
-# extractor_llm = llm.with_structured_output(PainPoints)
-# revisor_llm = llm.with_structured_output(PainPoints)
-# reflection_llm = llm.with_structured_output(ReflectionResult)
-#
-#
-# post_verbatim_pipe = post_verbatim_prompt | llm
-# post_verbatim_reflection_pipe = post_verbatim_reflection_prompt | llm
-# comment_verbatim_reflection_pipe = comment_verbatim_reflection_prompt | llm
-# extraction_reflection_pipe = extraction_reflection_prompt | llm
-# reformulation_reflection_pipe = reformulation_reflection_prompt | llm
-#
 
 
 class Workflow:
     MODEL = "claude-haiku-4-5"
-    MAX_REFLECTION_ITER = 2
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
@@ -200,21 +104,8 @@ class Workflow:
         response = self.post_verbatim_pipe.invoke({
             "post_title": state["post_title"],
             "post_descr": state["post_descr"],
-            "feedback": state.get("extraction_feedback", ""),
         })
         return {"pain_points": response.pain_points}
-
-    def post_verbatim_reflector(self, state: State):
-        pass
-
-    def comment_verbatim_reflector(self, state: State):
-        pass
-
-    def extraction_reflector(self, state: State):
-        pass
-
-    def reformulation_reflector(self, state: State):
-        pass
 
     @staticmethod
     def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
@@ -231,27 +122,16 @@ class Workflow:
     @staticmethod
     def spawn_comment_workers(state: State) -> list[Send]:
         return [
-            Send(
-                "comment_verbatim_extractor",
-                {
-                    "post_title": state["post_title"],
-                    "post_descr": state["post_descr"],
-                    "comment": c,
-                    "feedback": "",
-                },
-            )
+            Send("comment_verbatim_extractor", {"post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c})
             for c in Workflow.get_all_comments(state["comments"])
         ]
 
     def comment_verbatim_extractor(self, state: CommentWorkerState) -> dict:
-        response = self.comment_verbatim_pipe.invoke(
-            {
-                "post_title": state["post_title"],
-                "post_descr": state["post_descr"],
-                "comment": state["comment"]["text"],
-                "feedback": state["feedback"],
-            }
-        )
+        response = self.comment_verbatim_pipe.invoke({
+            "post_title": state["post_title"],
+            "post_descr": state["post_descr"],
+            "comment": state["comment"]["text"],
+        })
         return {"pain_points": response.pain_points}
 
     @staticmethod
@@ -263,8 +143,7 @@ class Workflow:
             {
                 "post_title": p["title"], "post_descr": p.get("selftext", ""),
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
-                "extraction_feedback": "", "extractor_iterations": 0,
-                "pain_points": [], "reformulation_feedback": "",
+                "pain_points": [],
             }
             for p in load_jsonl(THREADS_PATH)
         ]
