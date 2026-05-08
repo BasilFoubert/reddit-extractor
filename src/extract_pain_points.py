@@ -181,6 +181,8 @@ class State(TypedDict):
 
 class States(TypedDict):
     states_list: list[State]
+    post_verbatims: Annotated[list[str], add]
+    comment_verbatims: Annotated[list[str], add]
 
 
 # verbatim_structured_llm = llm.with_structured_output(Verbatims)
@@ -313,5 +315,10 @@ if __name__ == "__main__":
     THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
     wf = Workflow()
     graph = wf.build_graph()
-    result = graph.invoke({"states_list": wf.states})
-    print(result)
+    result = graph.invoke({"states_list": wf.states, "post_verbatims": [], "comment_verbatims": []})
+    print("=== POST VERBATIMS ===")
+    for v in result["post_verbatims"]:
+        print("-", v)
+    print("\n=== COMMENT VERBATIMS ===")
+    for v in result["comment_verbatims"]:
+        print("-", v)
