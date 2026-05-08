@@ -200,7 +200,7 @@ class States(TypedDict):
 
 
 class Workflow:
-    MODEL = "claude-sonnet-4-6"
+    MODEL = "claude-haiku-4-5"
     MAX_REFLECTION_ITER = 2
 
     def __init__(self):
@@ -304,18 +304,18 @@ class Workflow:
         outer_workflow.add_node("process_post", post_graph)
         outer_workflow.add_conditional_edges(START, self.spawn_post_workers)
         outer_workflow.add_edge("process_post", END)
-        return outer_workflow.compile()
+        self.built_graph= outer_workflow.compile()
 
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    Workflow.MODEL = "claude-haiku-4-5"
     THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
+    THREADS_PATH_TEST = Path("tests/data/small_subreddit_verbatims.jsonl")
     wf = Workflow()
-    graph = wf.build_graph()
-    result = graph.invoke({"states_list": wf.states, "post_verbatims": [], "comment_verbatims": []})
+    wf.build_graph()
+    result = wf.built_graph.invoke({"states_list": wf.states, "post_verbatims": [], "comment_verbatims": []})
     print("=== POST VERBATIMS ===")
     for v in result["post_verbatims"]:
         print("-", v)
