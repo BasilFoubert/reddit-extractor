@@ -203,13 +203,17 @@ class Workflow:
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
-        self.comment_verbatim_pipe = (
-            comment_verbatim_prompt | self.llm.with_structured_output(Verbatims)
-        )
+        self.post_verbatim_pipe = post_verbatim_prompt | self.llm.with_structured_output(Verbatims)
+        self.comment_verbatim_pipe = comment_verbatim_prompt | self.llm.with_structured_output(Verbatims)
         self.states: list[State] = self.build_states()
 
-    def post_verbatim_extractor(self, state: State):
-        pass
+    def post_verbatim_extractor(self, state: State) -> dict:
+        response = self.post_verbatim_pipe.invoke({
+            "post_title": state["post_title"],
+            "post_descr": state["post_descr"],
+            "feedback": state.get("post_verbatim_feedback", ""),
+        })
+        return {"post_verbatims": response.verbatims}
 
     def post_verbatim_reflector(self, state: State):
         pass
@@ -283,12 +287,13 @@ class Workflow:
         return [Send("process_post", s) for s in state["states_list"]]
 
     def build_graph(self):
-        # Inner graph: one post → parallel comments
+        # Inner graph: one post → parallel comments + post extraction
         post_workflow = StateGraph(State)
-        post_workflow.add_node(
-            "comment_verbatim_extractor", self.comment_verbatim_extractor
-        )
+        post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor)
+        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
+        post_workflow.add_edge(START, "post_verbatim_extractor")
         post_workflow.add_conditional_edges(START, self.spawn_comment_workers)
+        post_workflow.add_edge("post_verbatim_extractor", END)
         post_workflow.add_edge("comment_verbatim_extractor", END)
         post_graph = post_workflow.compile()
 
