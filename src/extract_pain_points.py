@@ -19,9 +19,12 @@ post_verbatim_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """Tu reçois le titre et la description d'un post Reddit.
-Découpe le contenu en un ou plusieurs verbatims. Chaque verbatim est une citation brute, mot pour mot, susceptible de contenir un pain point ou un besoin exprimé par l'auteur.
-N'invente rien et ne reformule pas : extrais uniquement ce qui est présent dans le texte.""",
+            """You receive the title and description of a Reddit post.
+Identify every pain or need expressed by the author, implicitly or explicitly.
+For each one:
+- verbatim: exact word-for-word quote from the text
+- reformulation: express the pain or need clearly and concisely in English, with enough context to be understood without reading the post. Minimum words, maximum clarity.
+Do not invent anything: the verbatim must exist as-is in the text.""",
         ),
         ("human", "Titre: {post_title}\n\nDescription: {post_descr}{feedback}"),
     ]
@@ -32,12 +35,12 @@ comment_verbatim_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """Tu es spécialisé en product management et tu cherches des besoins ou des douleurs de clients sur reddit.
-Tu reçois (à titre de contexte uniquement) un post Reddit, puis un commentaire.
-Découpe UNIQUEMENT le commentaire en un ou plusieurs verbatims. N'extrais AUCUN verbatim du post — il sert seulement de contexte.
-Chaque verbatim est une citation brute, mot pour mot, susceptible de contenir un pain point ou un besoin.
-Chaque verbatim retenu doit contenir une douleur ou un besoin exprimé implicitement ou explicitement 
-N'invente rien et ne reformule pas.""",
+            """You receive a Reddit post (context only) and a comment.
+Identify every pain or need expressed in the COMMENT ONLY, implicitly or explicitly.
+For each one:
+- verbatim: exact word-for-word quote from the comment
+- reformulation: express the pain or need clearly and concisely in English, using both the post and comment context to be understood without reading them. Minimum words, maximum clarity.
+Do not invent anything: the verbatim must exist as-is in the comment.""",
         ),
         (
             "human",
@@ -130,14 +133,9 @@ class PainPoint(BaseModel):
     )
 
 
-class Extraction(BaseModel):
+class PainPoints(BaseModel):
     pain_points: list[PainPoint]
 
-
-class Verbatims(BaseModel):
-    verbatims: list[str] = Field(
-        description="Citations brutes potentiellement porteuses d'un pain point ou d'un besoin"
-    )
 
 
 class ReflectionResult(BaseModel):
@@ -163,31 +161,20 @@ class State(TypedDict):
     post_title: str
     post_descr: str
     comments: list[Comment]
-
-    post_verbatims: Annotated[list[str], add]
-    post_verbatim_feedback: str
-    post_verbatim_iterations: int
-
-    comment_verbatims: Annotated[list[str], add]
-    comment_verbatim_feedback: str
-    comment_verbatim_iterations: int
-
+    pain_points: Annotated[list[PainPoint], add]
     extraction_feedback: str
     extractor_iterations: int
-
-    pain_points: Annotated[list[PainPoint], add]
     reformulation_feedback: str
 
 
 class States(TypedDict):
     states_list: list[State]
-    post_verbatims: Annotated[list[str], add]
-    comment_verbatims: Annotated[list[str], add]
+    pain_points: Annotated[list[PainPoint], add]
 
 
 # verbatim_structured_llm = llm.with_structured_output(Verbatims)
-# extractor_llm = llm.with_structured_output(Extraction)
-# revisor_llm = llm.with_structured_output(Extraction)
+# extractor_llm = llm.with_structured_output(PainPoints)
+# revisor_llm = llm.with_structured_output(PainPoints)
 # reflection_llm = llm.with_structured_output(ReflectionResult)
 #
 #
@@ -205,17 +192,17 @@ class Workflow:
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
-        self.post_verbatim_pipe = post_verbatim_prompt | self.llm.with_structured_output(Verbatims)
-        self.comment_verbatim_pipe = comment_verbatim_prompt | self.llm.with_structured_output(Verbatims)
+        self.post_verbatim_pipe = post_verbatim_prompt | self.llm.with_structured_output(PainPoints)
+        self.comment_verbatim_pipe = comment_verbatim_prompt | self.llm.with_structured_output(PainPoints)
         self.states: list[State] = self.build_states()
 
     def post_verbatim_extractor(self, state: State) -> dict:
         response = self.post_verbatim_pipe.invoke({
             "post_title": state["post_title"],
             "post_descr": state["post_descr"],
-            "feedback": state.get("post_verbatim_feedback", ""),
+            "feedback": state.get("extraction_feedback", ""),
         })
-        return {"post_verbatims": response.verbatims}
+        return {"pain_points": response.pain_points}
 
     def post_verbatim_reflector(self, state: State):
         pass
@@ -265,7 +252,7 @@ class Workflow:
                 "feedback": state["feedback"],
             }
         )
-        return {"comment_verbatims": response.verbatims}
+        return {"pain_points": response.pain_points}
 
     @staticmethod
     def build_states() -> list[State]:
@@ -276,8 +263,6 @@ class Workflow:
             {
                 "post_title": p["title"], "post_descr": p.get("selftext", ""),
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
-                "post_verbatims": [], "post_verbatim_feedback": "", "post_verbatim_iterations": 0,
-                "comment_verbatims": [], "comment_verbatim_feedback": "", "comment_verbatim_iterations": 0,
                 "extraction_feedback": "", "extractor_iterations": 0,
                 "pain_points": [], "reformulation_feedback": "",
             }
@@ -315,10 +300,9 @@ if __name__ == "__main__":
     THREADS_PATH_TEST = Path("tests/data/small_subreddit_verbatims.jsonl")
     wf = Workflow()
     wf.build_graph()
-    result = wf.built_graph.invoke({"states_list": wf.states, "post_verbatims": [], "comment_verbatims": []})
-    print("=== POST VERBATIMS ===")
-    for v in result["post_verbatims"]:
-        print("-", v)
-    print("\n=== COMMENT VERBATIMS ===")
-    for v in result["comment_verbatims"]:
-        print("-", v)
+    result = wf.built_graph.invoke({"states_list": wf.states, "pain_points": []})
+    print("=== PAIN POINTS ===")
+    for pp in result["pain_points"]:
+        print(f"  verbatim     : {pp.verbatim}")
+        print(f"  reformulation: {pp.pain_point_reformulated}")
+        print()
