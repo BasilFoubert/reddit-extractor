@@ -6,7 +6,7 @@ from typing import TypedDict, Optional, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 from langchain.chat_models import init_chat_model
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langchain_core.prompts import ChatPromptTemplate
 from src.utils import load_jsonl
 
@@ -59,6 +59,17 @@ class PainPoint(BaseModel):
 
 class PainPoints(BaseModel):
     pain_points: list[PainPoint]
+
+    @field_validator("pain_points", mode="before")
+    @classmethod
+    def parse_if_string(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # LLM returned an invalid JSON string, skip this extraction
+                return []
+        return v
 
 
 class Comment(TypedDict):
@@ -179,8 +190,8 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
-    THREADS_PATH_TEST = Path("tests/data/small_subreddit_verbatims.jsonl")
+    THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
+    THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
     wf = Workflow()
     wf.build_graph()
     from src.utils import save_jsonl
