@@ -4,11 +4,17 @@ from operator import add
 from pathlib import Path
 from typing import TypedDict, Optional, Annotated
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send
+from langgraph.types import Send, RetryPolicy
 from langchain.chat_models import init_chat_model
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.prompts import ChatPromptTemplate
-from src.utils import load_jsonl
+from src.utils import load_jsonl, save_jsonl
+from collections import defaultdict
+from tqdm import tqdm
+from dotenv import load_dotenv
+
 
 
 THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
@@ -109,14 +115,19 @@ class Workflow:
         self.states: list[State] = self.build_states()
 
     def post_verbatim_extractor(self, state: State) -> dict:
-        response = self.post_verbatim_pipe.invoke({
-            "post_title": state["post_title"],
-            "post_descr": state["post_descr"],
-        })
-        return {"pain_points": [
-            PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
-            for pp in response.pain_points
-        ]}
+        try:
+            response = self.post_verbatim_pipe.invoke({
+                "post_title": state["post_title"],
+                "post_descr": state["post_descr"],
+            })
+            return {"pain_points": [
+                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+                for pp in response.pain_points
+            ]}
+        except Exception as e:
+            if "rate_limit_error" in str(e):
+                raise
+            return {"pain_points": []}
 
     @staticmethod
     def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
@@ -138,15 +149,20 @@ class Workflow:
         ]
 
     def comment_verbatim_extractor(self, state: CommentWorkerState) -> dict:
-        response = self.comment_verbatim_pipe.invoke({
-            "post_title": state["post_title"],
-            "post_descr": state["post_descr"],
-            "comment": state["comment"]["text"],
-        })
-        return {"pain_points": [
-            PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
-            for pp in response.pain_points
-        ]}
+        try:
+            response = self.comment_verbatim_pipe.invoke({
+                "post_title": state["post_title"],
+                "post_descr": state["post_descr"],
+                "comment": state["comment"]["text"],
+            })
+            return {"pain_points": [
+                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+                for pp in response.pain_points
+            ]}
+        except Exception as e:
+            if "rate_limit_error" in str(e):
+                raise
+            return {"pain_points": []}
 
     @staticmethod
     def build_states() -> list[State]:
@@ -167,10 +183,18 @@ class Workflow:
         return [Send("process_post", s) for s in state["states_list"]]
 
     def build_graph(self):
+        retry_policy = RetryPolicy(
+            initial_interval=2.0,
+            backoff_factor=2.0,
+            max_interval=60,
+            max_attempts=float("inf"),
+            retry_on=lambda e: "rate_limit_error" in str(e),
+        )
+
         # Inner graph: one post → parallel comments + post extraction
         post_workflow = StateGraph(State)
-        post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor)
-        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor)
+        post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor, retry=retry_policy)
+        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor, retry=retry_policy)
         post_workflow.add_edge(START, "post_verbatim_extractor")
         post_workflow.add_conditional_edges(START, self.spawn_comment_workers)
         post_workflow.add_edge("post_verbatim_extractor", END)
@@ -186,7 +210,6 @@ class Workflow:
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
     load_dotenv()
 
     # THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
@@ -195,10 +218,6 @@ if __name__ == "__main__":
     THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
     wf = Workflow()
     wf.build_graph()
-    from src.utils import save_jsonl
-    from collections import defaultdict
-    from tqdm import tqdm
-
     all_pain_points: list[PainPoint] = []
 
     with tqdm(total=len(wf.states), desc="Analyzing posts", unit="post") as pbar:
@@ -209,6 +228,7 @@ if __name__ == "__main__":
             if "process_post" in event:
                 all_pain_points.extend(event["process_post"].get("pain_points", []))
                 pbar.update(1)
+
 
     grouped = defaultdict(list)
     for pp in all_pain_points:
