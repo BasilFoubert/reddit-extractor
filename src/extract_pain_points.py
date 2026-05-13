@@ -17,8 +17,6 @@ from dotenv import load_dotenv
 
 
 
-THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
-OUTPUT_PATH = Path("data/processed/r_ciso_pain_points.jsonl")
 
 
 post_verbatim_prompt = ChatPromptTemplate.from_messages(
@@ -29,10 +27,14 @@ post_verbatim_prompt = ChatPromptTemplate.from_messages(
 Identify every pain or need expressed by the author, implicitly or explicitly.
 For each one:
 - verbatim: exact word-for-word quote from the text
-- reformulation: express the pain or need clearly and concisely in English, with enough context to be understood without reading the post. Minimum words, maximum clarity.
+- reformulation: a self-contained, precise sentence in English that captures WHO is affected, WHAT the problem or need is, WHY it matters, and any relevant context (role, tool, constraint, consequence). Naturally weave in the author's own significant terms (technical names, product names, domain vocabulary, emotionally charged words) so the reformulation preserves their exact language where it matters. Must be fully understandable without reading the original post. No vague generalities — include the specific situation, domain, and stakes.
+- urgency: integer from 1 to 10 reflecting how urgently the author needs a solution.
+  1 = mild or hypothetical concern, no immediate action needed.
+  10 = actively seeking a solution right now, strong pain, or critical situation requiring immediate resolution.
+  Base this score on signals like: explicit urgency language ("asap", "critical", "stuck", "nothing works"), emotional tone, business or security risk, and whether they are actively asking for help.
 Do not invent anything: the verbatim must exist as-is in the text.""",
         ),
-        ("human", "Titre: {post_title}\n\nDescription: {post_descr}"),
+        ("human", "Title: {post_title}\n\nDescription: {post_descr}"),
     ]
 )
 
@@ -45,12 +47,16 @@ comment_verbatim_prompt = ChatPromptTemplate.from_messages(
 Identify every pain or need expressed in the COMMENT ONLY, implicitly or explicitly.
 For each one:
 - verbatim: exact word-for-word quote from the comment
-- reformulation: express the pain or need clearly and concisely in English, using both the post and comment context to be understood without reading them. Minimum words, maximum clarity.
+- reformulation: a self-contained, precise sentence in English that captures WHO is affected, WHAT the problem or need is, WHY it matters, and any relevant context (role, tool, constraint, consequence) drawn from both the post and the comment. Naturally weave in the commenter's own significant terms (technical names, product names, domain vocabulary, emotionally charged words) so the reformulation preserves their exact language where it matters. Must be fully understandable without reading the originals. No vague generalities — include the specific situation, domain, and stakes.
+- urgency: integer from 1 to 10 reflecting how urgently the commenter needs a solution.
+  1 = mild or hypothetical concern, no immediate action needed.
+  10 = actively seeking a solution right now, strong pain, or critical situation requiring immediate resolution.
+  Base this score on signals like: explicit urgency language ("asap", "critical", "stuck", "nothing works"), emotional tone, business or security risk, and whether they are actively asking for help.
 Do not invent anything: the verbatim must exist as-is in the comment.""",
         ),
         (
             "human",
-            "Contexte (post, ne pas extraire) :\nTitre: {post_title}\nDescription: {post_descr}\n\n---\n\nCommentaire :\n{comment}",
+            "Context (post, do not extract from) :\nTitle: {post_title}\nDescription: {post_descr}\n\n---\n\nComment:\n{comment}",
         ),
     ]
 )
@@ -59,8 +65,9 @@ Do not invent anything: the verbatim must exist as-is in the comment.""",
 
 class PainPoint(BaseModel):
     post_id: str = ""
-    verbatim: str = Field(description="Citation exacte de la douleur dans le texte source")
-    pain_point_reformulated: str = Field(description="Reformulation claire et concise de la douleur")
+    verbatim: str = Field(description="Exact quote of the pain point from the source text")
+    pain_point_reformulated: str = Field(description="Precise, self-contained reformulation including who, what, why, and context")
+    urgency: int = Field(default=5, ge=1, le=10, description="Urgency level from 1 (vague or hypothetical need) to 10 (actively seeking an immediate solution, critical pain)")
 
 
 class PainPoints(BaseModel):
@@ -73,7 +80,6 @@ class PainPoints(BaseModel):
             try:
                 return json.loads(v)
             except json.JSONDecodeError:
-                # LLM returned an invalid JSON string, skip this extraction
                 return []
         return v
 
@@ -121,7 +127,7 @@ class Workflow:
                 "post_descr": state["post_descr"],
             })
             return {"pain_points": [
-                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated, urgency=pp.urgency)
                 for pp in response.pain_points
             ]}
         except Exception as e:
@@ -156,7 +162,7 @@ class Workflow:
                 "comment": state["comment"]["text"],
             })
             return {"pain_points": [
-                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated)
+                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated, urgency=pp.urgency)
                 for pp in response.pain_points
             ]}
         except Exception as e:
