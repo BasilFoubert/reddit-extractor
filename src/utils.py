@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-
+from typing import Annotated
 JsonlData = list[dict]
 
 
@@ -39,4 +39,15 @@ def load_pain_points(file_path: str | Path) -> JsonlData:
             except json.JSONDecodeError:
                 continue
     return data
+
+def filter_pp_by_urgency(data:JsonlData, urgency_threshold: Annotated[int, "Range 0-10"]):
+    "filter pain points by urgency level keep only the pain points above the threshold"
+    if not 0 <= urgency_threshold <= 10:
+        raise ValueError
+    for thread in data:
+        pps = thread["pain_points"]
+        for pp in pps:
+            if pp["urgency"] < urgency_threshold:
+                pps.remove(pp)
+
 
