@@ -1,14 +1,11 @@
 from __future__ import annotations
-import json
 from operator import add
 from pathlib import Path
 from typing import TypedDict, Optional, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from langchain.chat_models import init_chat_model
-from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.outputs import LLMResult
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from src.utils import load_jsonl, save_jsonl
 from collections import defaultdict
@@ -19,44 +16,40 @@ from dotenv import load_dotenv
 
 
 
-post_verbatim_prompt = ChatPromptTemplate.from_messages(
+thread_scan_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You receive the title and description of a Reddit post.
-Identify every pain or need expressed by the author, implicitly or explicitly.
-For each one:
-- verbatim: exact word-for-word quote from the text
-- reformulation: a self-contained, precise sentence in English that captures WHO is affected, WHAT the problem or need is, WHY it matters, and any relevant context (role, tool, constraint, consequence). Naturally weave in the author's own significant terms (technical names, product names, domain vocabulary, emotionally charged words) so the reformulation preserves their exact language where it matters. Must be fully understandable without reading the original post. No vague generalities — include the specific situation, domain, and stakes.
-- urgency: integer from 1 to 10 reflecting how urgently the author needs a solution.
-  1 = mild or hypothetical concern, no immediate action needed.
-  10 = actively seeking a solution right now, strong pain, or critical situation requiring immediate resolution.
-  Base this score on signals like: explicit urgency language ("asap", "critical", "stuck", "nothing works"), emotional tone, business or security risk, and whether they are actively asking for help.
-Do not invent anything: the verbatim must exist as-is in the text.""",
+            """You receive a Reddit post and all its comments.
+Identify every distinct pain point or need expressed anywhere in the thread (post + comments), implicitly or explicitly.
+Deduplicate: if the same pain appears multiple times, list it only once.
+For each pain point assign a unique sequential index starting at 1 and write a description of 10 words maximum.""",
         ),
-        ("human", "Title: {post_title}\n\nDescription: {post_descr}"),
+        (
+            "human",
+            "Title: {post_title}\n\nDescription: {post_descr}\n\n---\n\nComments:\n{comments}",
+        ),
     ]
 )
 
 
-comment_verbatim_prompt = ChatPromptTemplate.from_messages(
+pain_extractor_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You receive a Reddit post (context only) and a comment.
-Identify every pain or need expressed in the COMMENT ONLY, implicitly or explicitly.
-For each one:
-- verbatim: exact word-for-word quote from the comment
-- reformulation: a self-contained, precise sentence in English that captures WHO is affected, WHAT the problem or need is, WHY it matters, and any relevant context (role, tool, constraint, consequence) drawn from both the post and the comment. Naturally weave in the commenter's own significant terms (technical names, product names, domain vocabulary, emotionally charged words) so the reformulation preserves their exact language where it matters. Must be fully understandable without reading the originals. No vague generalities — include the specific situation, domain, and stakes.
-- urgency: integer from 1 to 10 reflecting how urgently the commenter needs a solution.
-  1 = mild or hypothetical concern, no immediate action needed.
-  10 = actively seeking a solution right now, strong pain, or critical situation requiring immediate resolution.
-  Base this score on signals like: explicit urgency language ("asap", "critical", "stuck", "nothing works"), emotional tone, business or security risk, and whether they are actively asking for help.
-Do not invent anything: the verbatim must exist as-is in the comment.""",
+            """You receive a Reddit thread (title, post body, and all comments) and ONE specific pain point or need to locate.
+Search the entire thread — post title, post body, and all comments — for where this pain point is expressed, implicitly or explicitly.
+Return exactly one result:
+- verbatim: exact word-for-word quote from whichever part of the thread best expresses this pain
+- reformulation: a self-contained, precise sentence in English that captures WHO is affected, WHAT the problem or need is, WHY it matters, and any relevant context (role, tool, constraint, consequence). Naturally weave in the author's own significant terms. Must be fully understandable without reading the original. No vague generalities — include the specific situation, domain, and stakes.
+- urgency: integer from 1 to 10 reflecting how urgently a solution is needed.
+  1 = mild or hypothetical concern.
+  10 = actively seeking a solution right now, strong pain, or critical situation.
+Do not invent anything: the verbatim must exist as-is in the thread.""",
         ),
         (
             "human",
-            "Context (post, do not extract from) :\nTitle: {post_title}\nDescription: {post_descr}\n\n---\n\nComment:\n{comment}",
+            "Pain point to locate: {pain_description}\n\n---\n\nTitle: {post_title}\n\nPost body: {post_descr}\n\nComments:\n{comments}",
         ),
     ]
 )
@@ -70,18 +63,13 @@ class PainPoint(BaseModel):
     urgency: int = Field(default=5, ge=1, le=10, description="Urgency level from 1 (vague or hypothetical need) to 10 (actively seeking an immediate solution, critical pain)")
 
 
-class PainPoints(BaseModel):
-    pain_points: list[PainPoint]
+class PainSummary(BaseModel):
+    index: int = Field(description="Unique index identifying this pain point")
+    description: str = Field(description="Brief description of the pain, 10 words max")
 
-    @field_validator("pain_points", mode="before")
-    @classmethod
-    def parse_if_string(cls, v):
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return []
-        return v
+
+class PostPainSummary(BaseModel):
+    pain_summaries: list[PainSummary]
 
 
 class Comment(TypedDict):
@@ -89,11 +77,12 @@ class Comment(TypedDict):
     sub_comments: Optional[list[Comment]]
 
 
-class CommentWorkerState(TypedDict):
+class PainWorkerState(TypedDict):
     post_id: str
     post_title: str
     post_descr: str
-    comment: Comment
+    comments_text: str
+    pain_summary: PainSummary
 
 
 class State(TypedDict):
@@ -101,6 +90,7 @@ class State(TypedDict):
     post_title: str
     post_descr: str
     comments: list[Comment]
+    post_pain_summary: Optional[PostPainSummary]
     pain_points: Annotated[list[PainPoint], add]
 
 
@@ -116,54 +106,55 @@ class Workflow:
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
-        self.post_verbatim_pipe = post_verbatim_prompt | self.llm.with_structured_output(PainPoints)
-        self.comment_verbatim_pipe = comment_verbatim_prompt | self.llm.with_structured_output(PainPoints)
+        self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(PostPainSummary)
+        self.pain_extractor_pipe = pain_extractor_prompt | self.llm.with_structured_output(PainPoint)
         self.states: list[State] = self.build_states()
 
-    def post_verbatim_extractor(self, state: State) -> dict:
+    @staticmethod
+    def _flatten_comments_text(comments: Optional[list[Comment]], depth: int = 0) -> str:
+        lines = []
+        for c in (comments or []):
+            lines.append("  " * depth + "- " + c["text"])
+            lines.extend(Workflow._flatten_comments_text(c.get("sub_comments"), depth + 1).splitlines())
+        return "\n".join(lines)
+
+    def thread_scanner(self, state: State) -> dict:
         try:
-            response = self.post_verbatim_pipe.invoke({
+            response = self.thread_scan_pipe.invoke({
                 "post_title": state["post_title"],
                 "post_descr": state["post_descr"],
+                "comments": self._flatten_comments_text(state["comments"]),
             })
-            return {"pain_points": [
-                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated, urgency=pp.urgency)
-                for pp in response.pain_points
-            ]}
+            return {"post_pain_summary": response}
         except Exception as e:
             if "rate_limit_error" in str(e):
                 raise
-            return {"pain_points": []}
+            return {"post_pain_summary": PostPainSummary(pain_summaries=[])}
 
     @staticmethod
-    def get_all_comments(comments: Optional[list[Comment]]) -> list[Comment]:
-        all_comments = []
-        if comments:
-            for comment in comments:
-                all_comments.append(comment)
-                if comment.get("sub_comments"):
-                    all_comments.extend(
-                        Workflow.get_all_comments(comment["sub_comments"])
-                    )
-        return all_comments
-
-    @staticmethod
-    def spawn_comment_workers(state: State) -> list[Send]:
+    def spawn_pain_workers(state: State) -> list[Send]:
+        comments_text = Workflow._flatten_comments_text(state["comments"])
         return [
-            Send("comment_verbatim_extractor", {"post_id": state["post_id"], "post_title": state["post_title"], "post_descr": state["post_descr"], "comment": c})
-            for c in Workflow.get_all_comments(state["comments"])
-        ]
-
-    def comment_verbatim_extractor(self, state: CommentWorkerState) -> dict:
-        try:
-            response = self.comment_verbatim_pipe.invoke({
+            Send("pain_point_extractor", {
+                "post_id": state["post_id"],
                 "post_title": state["post_title"],
                 "post_descr": state["post_descr"],
-                "comment": state["comment"]["text"],
+                "comments_text": comments_text,
+                "pain_summary": ps,
+            })
+            for ps in (state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else [])
+        ]
+
+    def pain_point_extractor(self, state: PainWorkerState) -> dict:
+        try:
+            response = self.pain_extractor_pipe.invoke({
+                "pain_description": state["pain_summary"].description,
+                "post_title": state["post_title"],
+                "post_descr": state["post_descr"],
+                "comments": state["comments_text"],
             })
             return {"pain_points": [
-                PainPoint(post_id=state["post_id"], verbatim=pp.verbatim, pain_point_reformulated=pp.pain_point_reformulated, urgency=pp.urgency)
-                for pp in response.pain_points
+                PainPoint(post_id=state["post_id"], verbatim=response.verbatim, pain_point_reformulated=response.pain_point_reformulated, urgency=response.urgency)
             ]}
         except Exception as e:
             if "rate_limit_error" in str(e):
@@ -197,14 +188,13 @@ class Workflow:
             retry_on=lambda e: "rate_limit_error" in str(e),
         )
 
-        # Inner graph: one post → parallel comments + post extraction
+        # Inner graph: one post → scan thread → parallel pain point extractors
         post_workflow = StateGraph(State)
-        post_workflow.add_node("post_verbatim_extractor", self.post_verbatim_extractor, retry=retry_policy)
-        post_workflow.add_node("comment_verbatim_extractor", self.comment_verbatim_extractor, retry=retry_policy)
-        post_workflow.add_edge(START, "post_verbatim_extractor")
-        post_workflow.add_conditional_edges(START, self.spawn_comment_workers)
-        post_workflow.add_edge("post_verbatim_extractor", END)
-        post_workflow.add_edge("comment_verbatim_extractor", END)
+        post_workflow.add_node("thread_scanner", self.thread_scanner, retry=retry_policy)
+        post_workflow.add_node("pain_point_extractor", self.pain_point_extractor, retry=retry_policy)
+        post_workflow.add_edge(START, "thread_scanner")
+        post_workflow.add_conditional_edges("thread_scanner", self.spawn_pain_workers)
+        post_workflow.add_edge("pain_point_extractor", END)
         post_graph = post_workflow.compile()
 
         # Outer graph: parallel posts
@@ -218,10 +208,10 @@ class Workflow:
 if __name__ == "__main__":
     load_dotenv()
 
-    # THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
-    # THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
-    THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
-    THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
+    THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
+    THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
+    # THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
+    # THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
     wf = Workflow()
     wf.build_graph()
     all_pain_points: list[PainPoint] = []
