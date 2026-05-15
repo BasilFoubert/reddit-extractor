@@ -52,9 +52,7 @@ def filter_short_comments(
     return [r for r in records if len(str(r.get("body", ""))) >= min_length]
 
 
-def filter_fields(
-    records: list[RawRecord], fields: list[str] = FIELDS_TO_KEEP
-) -> list[RawRecord]:
+def filter_fields(records: list[RawRecord], fields: list[str] = FIELDS_TO_KEEP) -> list[RawRecord]:
     return [{k: r[k] for k in fields if k in r} for r in records]
 
 
@@ -90,7 +88,5 @@ def ingest_comments(input_path: str | Path, output_path: str | Path) -> int:
 
 
 if __name__ == "__main__":
-    n = ingest_comments(
-        "data/raw/r_ciso_comments.jsonl", "data/processed/r_ciso_comments.jsonl"
-    )
+    n = ingest_comments("data/raw/r_ciso_comments.jsonl", "data/processed/r_ciso_comments.jsonl")
     print(f"{n} comments written")

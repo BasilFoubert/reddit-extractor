@@ -68,9 +68,7 @@ def build_threads(posts: list[RawRecord], comments: list[RawRecord]) -> list[Thr
         children = by_parent.get(f"t1_{comment_id}", [])
         return [
             build_comment(child, build_replies(str(child["id"])))
-            for child in sorted(
-                children, key=lambda x: int(x.get("score") or 0), reverse=True
-            )
+            for child in sorted(children, key=lambda x: int(x.get("score") or 0), reverse=True)
         ]
 
     threads: list[Thread] = []
@@ -79,9 +77,7 @@ def build_threads(posts: list[RawRecord], comments: list[RawRecord]) -> list[Thr
         top_level = by_parent.get(f"t3_{post_id}", [])
         top_comments = [
             build_comment(c, build_replies(str(c["id"])))
-            for c in sorted(
-                top_level, key=lambda x: int(x.get("score") or 0), reverse=True
-            )
+            for c in sorted(top_level, key=lambda x: int(x.get("score") or 0), reverse=True)
         ]
         threads.append(
             Thread(

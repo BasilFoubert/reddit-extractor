@@ -76,31 +76,38 @@ class States(TypedDict):
     pain_points: Annotated[list[PainPoint], add]
 
 
-
 class Workflow:
     MODEL = "claude-haiku-4-5"
 
     def __init__(self):
         self.llm = init_chat_model(self.MODEL)
-        self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(PostPainSummary)
-        self.pain_extractor_pipe = pain_extractor_prompt | self.llm.with_structured_output(PainPoint)
+        self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(
+            PostPainSummary
+        )
+        self.pain_extractor_pipe = pain_extractor_prompt | self.llm.with_structured_output(
+            PainPoint
+        )
         self.states: list[State] = self.build_states()
 
     @staticmethod
     def _flatten_comments_text(comments: list[Comment] | None, depth: int = 0) -> str:
         lines = []
-        for c in (comments or []):
+        for c in comments or []:
             lines.append("  " * depth + "- " + c["text"])
-            lines.extend(Workflow._flatten_comments_text(c.get("sub_comments"), depth + 1).splitlines())
+            lines.extend(
+                Workflow._flatten_comments_text(c.get("sub_comments"), depth + 1).splitlines()
+            )
         return "\n".join(lines)
 
     def thread_scanner(self, state: State) -> dict:
         try:
-            response = self.thread_scan_pipe.invoke({
-                "post_title": state["post_title"],
-                "post_descr": state["post_descr"],
-                "comments": self._flatten_comments_text(state["comments"]),
-            })
+            response = self.thread_scan_pipe.invoke(
+                {
+                    "post_title": state["post_title"],
+                    "post_descr": state["post_descr"],
+                    "comments": self._flatten_comments_text(state["comments"]),
+                }
+            )
             return {"post_pain_summary": response}
         except Exception as e:
             if "rate_limit_error" in str(e):
@@ -111,27 +118,41 @@ class Workflow:
     def spawn_pain_workers(state: State) -> list[Send]:
         comments_text = Workflow._flatten_comments_text(state["comments"])
         return [
-            Send("pain_point_extractor", {
-                "post_id": state["post_id"],
-                "post_title": state["post_title"],
-                "post_descr": state["post_descr"],
-                "comments_text": comments_text,
-                "pain_summary": ps,
-            })
-            for ps in (state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else [])
+            Send(
+                "pain_point_extractor",
+                {
+                    "post_id": state["post_id"],
+                    "post_title": state["post_title"],
+                    "post_descr": state["post_descr"],
+                    "comments_text": comments_text,
+                    "pain_summary": ps,
+                },
+            )
+            for ps in (
+                state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else []
+            )
         ]
 
     def pain_point_extractor(self, state: PainWorkerState) -> dict:
         try:
-            response = self.pain_extractor_pipe.invoke({
-                "pain_description": state["pain_summary"].description,
-                "post_title": state["post_title"],
-                "post_descr": state["post_descr"],
-                "comments": state["comments_text"],
-            })
-            return {"pain_points": [
-                PainPoint(post_id=state["post_id"], verbatim=response.verbatim, pain_point_reformulated=response.pain_point_reformulated, urgency=response.urgency)
-            ]}
+            response = self.pain_extractor_pipe.invoke(
+                {
+                    "pain_description": state["pain_summary"].description,
+                    "post_title": state["post_title"],
+                    "post_descr": state["post_descr"],
+                    "comments": state["comments_text"],
+                }
+            )
+            return {
+                "pain_points": [
+                    PainPoint(
+                        post_id=state["post_id"],
+                        verbatim=response.verbatim,
+                        pain_point_reformulated=response.pain_point_reformulated,
+                        urgency=response.urgency,
+                    )
+                ]
+            }
         except Exception as e:
             if "rate_limit_error" in str(e):
                 raise
@@ -140,14 +161,19 @@ class Workflow:
     @staticmethod
     def build_states() -> list[State]:
         def _map_comment(c: dict) -> Comment:
-            return {"text": c["body"], "sub_comments": [_map_comment(r) for r in c.get("replies", [])]}
+            return {
+                "text": c["body"],
+                "sub_comments": [_map_comment(r) for r in c.get("replies", [])],
+            }
 
         return [
             {
                 "post_id": p["id"],
-                "post_title": p["title"], "post_descr": p.get("selftext", ""),
+                "post_title": p["title"],
+                "post_descr": p.get("selftext", ""),
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
-                "pain_points": [], }
+                "pain_points": [],
+            }
             for p in load_jsonl(THREADS_PATH)
         ]
 
@@ -167,7 +193,9 @@ class Workflow:
         # Inner graph: one post → scan thread → parallel pain point extractors
         post_workflow = StateGraph(State)
         post_workflow.add_node("thread_scanner", self.thread_scanner, retry=retry_policy)
-        post_workflow.add_node("pain_point_extractor", self.pain_point_extractor, retry=retry_policy)
+        post_workflow.add_node(
+            "pain_point_extractor", self.pain_point_extractor, retry=retry_policy
+        )
         post_workflow.add_edge(START, "thread_scanner")
         post_workflow.add_conditional_edges("thread_scanner", self.spawn_pain_workers)
         post_workflow.add_edge("pain_point_extractor", END)
@@ -200,7 +228,6 @@ if __name__ == "__main__":
             if "process_post" in event:
                 all_pain_points.extend(event["process_post"].get("pain_points", []))
                 pbar.update(1)
-
 
     grouped = defaultdict(list)
     for pp in all_pain_points:
