@@ -32,6 +32,20 @@ For each pain point assign a unique sequential index starting at 1 and write a d
 )
 
 
+pain_dedup_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You receive a numbered list of pain points identified from a Reddit thread.
+Remove duplicates: two entries are duplicates if they describe the same underlying problem or need, even if worded differently.
+When merging duplicates, keep the most informative description.
+Re-index the remaining entries sequentially starting at 1.
+Return only the deduplicated list.""",
+        ),
+        ("human", "{pain_summaries}"),
+    ]
+)
+
 pain_extractor_prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -84,6 +98,7 @@ class Workflow:
         self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(
             PostPainSummary
         )
+        self.pain_dedup_pipe = pain_dedup_prompt | self.llm.with_structured_output(PostPainSummary)
         self.pain_extractor_pipe = pain_extractor_prompt | self.llm.with_structured_output(
             PainPoint
         )
@@ -113,6 +128,19 @@ class Workflow:
             if "rate_limit_error" in str(e):
                 raise
             return {"post_pain_summary": PostPainSummary(pain_summaries=[])}
+
+    def pain_deduplicator(self, state: State) -> dict:
+        summary = state.get("post_pain_summary")
+        if not summary or len(summary.pain_summaries) <= 1:
+            return {}
+        formatted = "\n".join(f"{ps.index}. {ps.description}" for ps in summary.pain_summaries)
+        try:
+            response = self.pain_dedup_pipe.invoke({"pain_summaries": formatted})
+            return {"post_pain_summary": response}
+        except Exception as e:
+            if "rate_limit_error" in str(e):
+                raise
+            return {}
 
     @staticmethod
     def spawn_pain_workers(state: State) -> list[Send]:
@@ -193,11 +221,13 @@ class Workflow:
         # Inner graph: one post → scan thread → parallel pain point extractors
         post_workflow = StateGraph(State)
         post_workflow.add_node("thread_scanner", self.thread_scanner, retry=retry_policy)
+        post_workflow.add_node("pain_deduplicator", self.pain_deduplicator, retry=retry_policy)
         post_workflow.add_node(
             "pain_point_extractor", self.pain_point_extractor, retry=retry_policy
         )
         post_workflow.add_edge(START, "thread_scanner")
-        post_workflow.add_conditional_edges("thread_scanner", self.spawn_pain_workers)
+        post_workflow.add_edge("thread_scanner", "pain_deduplicator")
+        post_workflow.add_conditional_edges("pain_deduplicator", self.spawn_pain_workers)
         post_workflow.add_edge("pain_point_extractor", END)
         post_graph = post_workflow.compile()
 
