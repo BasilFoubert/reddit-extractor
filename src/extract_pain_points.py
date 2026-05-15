@@ -5,16 +5,12 @@ from typing import TypedDict, Optional, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from langchain.chat_models import init_chat_model
-from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from src.utils import load_jsonl, save_jsonl
 from collections import defaultdict
 from tqdm import tqdm
 from dotenv import load_dotenv
-
-
-
-
+from src.types import PainPoint, PainSummary, PostPainSummary, Comment 
 
 thread_scan_prompt = ChatPromptTemplate.from_messages(
     [
@@ -55,28 +51,6 @@ Do not invent anything: the verbatim must exist as-is in the thread.""",
 )
 
 
-
-class PainPoint(BaseModel):
-    post_id: str = ""
-    verbatim: str = Field(description="Exact quote of the pain point from the source text")
-    pain_point_reformulated: str = Field(description="Precise, self-contained reformulation including who, what, why, and context")
-    urgency: int = Field(default=5, ge=1, le=10, description="Urgency level from 1 (vague or hypothetical need) to 10 (actively seeking an immediate solution, critical pain)")
-
-
-class PainSummary(BaseModel):
-    index: int = Field(description="Unique index identifying this pain point")
-    description: str = Field(description="Brief description of the pain, 10 words max")
-
-
-class PostPainSummary(BaseModel):
-    pain_summaries: list[PainSummary]
-
-
-class Comment(TypedDict):
-    text: str
-    sub_comments: Optional[list[Comment]]
-
-
 class PainWorkerState(TypedDict):
     post_id: str
     post_title: str
@@ -97,7 +71,6 @@ class State(TypedDict):
 class States(TypedDict):
     states_list: list[State]
     pain_points: Annotated[list[PainPoint], add]
-
 
 
 
@@ -208,10 +181,10 @@ class Workflow:
 if __name__ == "__main__":
     load_dotenv()
 
-    THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
-    THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
-    # THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
-    # THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
+    # THREADS_PATH = Path("data/processed/r_ciso_threads.jsonl")
+    # THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
+    THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
+    THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
     wf = Workflow()
     wf.build_graph()
     all_pain_points: list[PainPoint] = []
