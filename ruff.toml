@@ -1,3 +1,5 @@
+include = ["src/**/*.py"]
+
 line-length = 100
 
 [lint]
