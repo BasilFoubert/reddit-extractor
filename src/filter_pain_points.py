@@ -1,4 +1,10 @@
-from src.utils import count_pain_points, filter_pp_by_urgency, load_jsonl, save_jsonl
+from src.utils import (
+    count_pain_points,
+    filter_pp_by_urgency,
+    load_jsonl,
+    print_pain_points,
+    save_jsonl,
+)
 
 URGENCY_THRESHOLD = 9
 
@@ -24,6 +30,7 @@ def main() -> None:
         print(
             f"{input_path}: {before} pain points → {after} après filtrage (urgency >= {URGENCY_THRESHOLD})"
         )
+        print_pain_points(data)
 
 
 if __name__ == "__main__":

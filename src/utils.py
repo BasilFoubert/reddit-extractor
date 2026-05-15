@@ -48,12 +48,24 @@ def count_pain_points(data: JsonlData) -> int:
     return sum(len(thread.get("pain_points", [])) for thread in data)
 
 
+def print_pain_points(data: JsonlData) -> None:
+    for thread in data:
+        post_id = thread.get("post_id") or thread.get("id", "unknown")
+        pain_points = thread.get("pain_points", [])
+        if not pain_points:
+            continue
+        print(f"\n[{post_id}]")
+        for i, pp in enumerate(pain_points, 1):
+            urgency = pp.get("urgency", "?")
+            text = pp.get("pain_point_reformulated", "")
+            print(f"  {i}. [{urgency}/10] {text}")
+
+
 def filter_pp_by_urgency(data: JsonlData, urgency_threshold: Annotated[int, "Range 0-10"]):
     "filter pain points by urgency level keep only the pain points above the threshold"
     if not 0 <= urgency_threshold <= 10:
         raise ValueError
     for thread in data:
-        pps = thread["pain_points"]
-        for pp in pps:
-            if pp["urgency"] < urgency_threshold:
-                pps.remove(pp)
+        thread["pain_points"] = [
+            pp for pp in thread["pain_points"] if pp["urgency"] >= urgency_threshold
+        ]
