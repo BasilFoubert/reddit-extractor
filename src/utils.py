@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
 from typing import Annotated
+
 JsonlData = list[dict]
 
 
 def load_jsonl(file_path: str | Path) -> JsonlData:
     data = []
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, encoding="utf-8") as file:
         for line in file:
             try:
                 data.append(json.loads(line))
@@ -23,7 +24,7 @@ def save_jsonl(data: JsonlData, file_path: str | Path) -> None:
 
 def load_pain_points(file_path: str | Path) -> JsonlData:
     data = []
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, encoding="utf-8") as file:
         for line in file:
             line = line.strip()
             if not line:
@@ -31,16 +32,19 @@ def load_pain_points(file_path: str | Path) -> JsonlData:
             try:
                 post = json.loads(line)
                 for pp in post.get("pain_points", []):
-                    data.append({
-                        "text": pp["pain_point_reformulated"],
-                        "post_id": pp["post_id"],
-                        "verbatim": pp["verbatim"],
-                    })
+                    data.append(
+                        {
+                            "text": pp["pain_point_reformulated"],
+                            "post_id": pp["post_id"],
+                            "verbatim": pp["verbatim"],
+                        }
+                    )
             except json.JSONDecodeError:
                 continue
     return data
 
-def filter_pp_by_urgency(data:JsonlData, urgency_threshold: Annotated[int, "Range 0-10"]):
+
+def filter_pp_by_urgency(data: JsonlData, urgency_threshold: Annotated[int, "Range 0-10"]):
     "filter pain points by urgency level keep only the pain points above the threshold"
     if not 0 <= urgency_threshold <= 10:
         raise ValueError
@@ -49,5 +53,3 @@ def filter_pp_by_urgency(data:JsonlData, urgency_threshold: Annotated[int, "Rang
         for pp in pps:
             if pp["urgency"] < urgency_threshold:
                 pps.remove(pp)
-
-

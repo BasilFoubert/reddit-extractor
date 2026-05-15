@@ -1,6 +1,10 @@
 from __future__ import annotations
+
+from typing import TypedDict
+
 from pydantic import BaseModel, Field
-from typing import TypedDict, Optional
+
+
 class PainPoint(BaseModel):
     post_id: str = ""
     verbatim: str = Field(description="Exact quote of the pain point from the source text")
@@ -19,7 +23,7 @@ class PostPainSummary(BaseModel):
 
 class Comment(TypedDict):
     text: str
-    sub_comments: Optional[list[Comment]]
+    sub_comments: list[Comment] | None
 
 
 

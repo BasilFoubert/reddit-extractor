@@ -1,16 +1,19 @@
 from __future__ import annotations
+
+from collections import defaultdict
 from operator import add
 from pathlib import Path
-from typing import TypedDict, Optional, Annotated
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, RetryPolicy
+from typing import Annotated, TypedDict
+
+from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
-from src.utils import load_jsonl, save_jsonl
-from collections import defaultdict
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy, Send
 from tqdm import tqdm
-from dotenv import load_dotenv
-from src.types import PainPoint, PainSummary, PostPainSummary, Comment 
+
+from src.types import Comment, PainPoint, PainSummary, PostPainSummary
+from src.utils import load_jsonl, save_jsonl
 
 thread_scan_prompt = ChatPromptTemplate.from_messages(
     [
@@ -64,7 +67,7 @@ class State(TypedDict):
     post_title: str
     post_descr: str
     comments: list[Comment]
-    post_pain_summary: Optional[PostPainSummary]
+    post_pain_summary: PostPainSummary | None
     pain_points: Annotated[list[PainPoint], add]
 
 
@@ -84,7 +87,7 @@ class Workflow:
         self.states: list[State] = self.build_states()
 
     @staticmethod
-    def _flatten_comments_text(comments: Optional[list[Comment]], depth: int = 0) -> str:
+    def _flatten_comments_text(comments: list[Comment] | None, depth: int = 0) -> str:
         lines = []
         for c in (comments or []):
             lines.append("  " * depth + "- " + c["text"])
