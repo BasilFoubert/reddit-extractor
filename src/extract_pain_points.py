@@ -206,6 +206,15 @@ class Workflow:
         ]
 
     @staticmethod
+    def deduplicate_by_verbatim(pain_points: list[PainPoint]) -> list[PainPoint]:
+        seen: dict[str, PainPoint] = {}
+        for pp in pain_points:
+            key = pp.verbatim.strip()
+            if key not in seen or pp.urgency > seen[key].urgency:
+                seen[key] = pp
+        return list(seen.values())
+
+    @staticmethod
     def spawn_post_workers(state: States) -> list[Send]:
         return [Send("process_post", s) for s in state["states_list"]]
 
@@ -256,7 +265,8 @@ if __name__ == "__main__":
             stream_mode="updates",
         ):
             if "process_post" in event:
-                all_pain_points.extend(event["process_post"].get("pain_points", []))
+                pps = Workflow.deduplicate_by_verbatim(event["process_post"].get("pain_points", []))
+                all_pain_points.extend(pps)
                 pbar.update(1)
 
     grouped = defaultdict(list)
