@@ -44,6 +44,10 @@ def load_pain_points(file_path: str | Path) -> JsonlData:
     return data
 
 
+def count_pain_points(data: JsonlData) -> int:
+    return sum(len(thread.get("pain_points", [])) for thread in data)
+
+
 def filter_pp_by_urgency(data: JsonlData, urgency_threshold: Annotated[int, "Range 0-10"]):
     "filter pain points by urgency level keep only the pain points above the threshold"
     if not 0 <= urgency_threshold <= 10:
