@@ -5,10 +5,11 @@ description: Use this skill any time the user asks for a git commit, to commit c
 
 When you create a git commit, follow these rules. Never add a "Co-Authored-By" trailer.
 
-1. Start the subject line with one of: feat, fix, chore, docs, refactor, test, perf.
-2. Add a colon and a space, then a short imperative summary, no period.
-3. Keep the subject under 70 characters.
-4. If the change touches more than two files, add a one-line body that says why.
+1. Always write in English — subject line and body.
+2. Start the subject line with one of: feat, fix, chore, docs, refactor, test, perf.
+3. Add a colon and a space, then a short imperative summary, no period.
+4. Keep the subject under 70 characters.
+5. If the change touches more than two files, add a one-line body that says why.
 
 Example:
 
