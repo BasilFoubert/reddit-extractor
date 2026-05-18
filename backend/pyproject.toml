@@ -8,6 +8,7 @@ dependencies = [
     "anthropic>=0.99.0",
     "dotenv>=0.9.9",
     "einops>=0.8.2",
+    "fastapi>=0.136.1",
     "hdbscan>=0.8.42",
     "langchain>=1.2.17",
     "langchain-anthropic>=1.4.3",

@@ -1,3 +1,12 @@
+## Backend
+
+```bash
+cd backend/src
+uv run fastapi dev api.py
+```
+
+---
+
 subreddits à surveiller.
 
 r/ciso
