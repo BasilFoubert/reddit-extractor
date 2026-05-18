@@ -1,1 +1,16 @@
 **/__pycache__/
+**/.venv/
+*.pyc
+*.pyo
+
+# Environnement
+.env
+
+# Données
+backend/data/raw/
+backend/data/processed/
+backend/data/embeddings/
+backend/data/samples/
+
+# macOS
+.DS_Store
