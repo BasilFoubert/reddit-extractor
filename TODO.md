@@ -13,11 +13,9 @@
 
 [x] Setup api chatbot backend
 
-[] Coder chatbot front
-
-[]  Tracing Langsmith
-
+[x] Coder chatbot front
 [] Productionniser les scripts, design pattern, refacto
+[]  Tracing Langsmith
 
 [] Estimation coût par recherche
 

@@ -7,7 +7,7 @@ from hdbscan import HDBSCAN
 from sentence_transformers import SentenceTransformer
 from umap import UMAP
 
-from src.utils import load_jsonl, load_pain_points, save_jsonl
+from src.core.utils import load_jsonl, load_pain_points, save_jsonl
 
 
 def main():
