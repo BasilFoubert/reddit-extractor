@@ -1,9 +1,20 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from src.chat_service import agent_send_message, create_conversation
 
 app = FastAPI()
+
+if os.getenv("ENV") == "dev":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 class MessageRequest(BaseModel):

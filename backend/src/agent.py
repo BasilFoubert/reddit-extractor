@@ -1,13 +1,10 @@
 from typing import Annotated, TypedDict
 
-from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-
-load_dotenv()
 
 SYSTEM_PROMPT = "You are a helpful assistant designed to conduct market research by analyzing reddit posts and explore pain points of redditors."
 
