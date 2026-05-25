@@ -18,6 +18,7 @@ _ENDPOINTS = {
 
 _MIN_COMMENT_LENGTH = 50
 _MIN_THREAD_SCORE = 3
+_URGENCY_THRESHOLD = 6
 
 _COMMENT_FIELDS = [
     "id",
@@ -208,6 +209,7 @@ class ThreadsManagerService:
         self.comments: list[Comment] = []
         self.threads: list[Thread] = []
         self.pain_points: list[PainPoint] = []
+        self.filtered_pp: list[PainPoint] = []
 
     def download_subreddit(self, after: str, before: str) -> None:
         """Download subreddit posts and comments from Arctic Shift into memory."""
@@ -222,35 +224,31 @@ class ThreadsManagerService:
             self.raw_posts = _paginate(client, _ENDPOINTS["posts"], params)
             self.raw_comments = _paginate(client, _ENDPOINTS["comments"], params)
 
-    def ingest_posts(self) -> int:
-        """Normalize raw posts. Returns the number of posts."""
+    def ingest_posts(self):
+        """Normalize raw posts."""
         self.posts = [
             _normalize_post({k: r[k] for k in _POST_FIELDS if k in r}) for r in self.raw_posts
         ]
-        return len(self.posts)
 
-    def ingest_comments(self) -> int:
-        """Filter short comments, normalize. Returns the number of comments."""
+    def ingest_comments(self):
+        """Filter short comments and normalize."""
         self.comments = [
             _normalize_comment({k: r[k] for k in _COMMENT_FIELDS if k in r})
             for r in self.raw_comments
             if len(str(r.get("body", ""))) >= _MIN_COMMENT_LENGTH
         ]
-        return len(self.comments)
 
-    def build_threads(self) -> int:
-        """Assemble posts and comments into threads. Returns the number of threads."""
+    def build_threads(self):
+        """Assemble posts and comments into threads."""
         self.threads = _build_thread_list(self.posts, self.comments)
-        return len(self.threads)
 
-    def extract_pain_points(self) -> int:
-        """Extract pain points from threads using LLM. Returns the number of pain points."""
+    def extract_pain_points(self):
+        """Extract pain points from threads using LLM."""
         self.pain_points = Workflow(threads=self.threads).run()
-        return len(self.pain_points)
 
-    def filter_pain_points(self) -> int:
-        """Filter pain points by urgency threshold. Returns the number of pain points kept."""
-        pass
+    def filter_pain_points(self, urgency_threshold: int = _URGENCY_THRESHOLD):
+        """Filter pain points by urgency threshold."""
+        self.filtered_pp = [pp for pp in self.pain_points if pp.urgency >= urgency_threshold]
 
     def run_pipeline(self) -> None:
         """Run all pipeline steps in order."""
