@@ -93,7 +93,7 @@ class States(TypedDict):
 class Workflow:
     MODEL = "claude-haiku-4-5"
 
-    def __init__(self):
+    def __init__(self, threads: list[dict] | None = None):
         self.llm = init_chat_model(self.MODEL)
         self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(
             PostPainSummary
@@ -102,7 +102,9 @@ class Workflow:
         self.pain_extractor_pipe = pain_extractor_prompt | self.llm.with_structured_output(
             PainPoint
         )
-        self.states: list[State] = self.build_states()
+        self.states: list[State] = self.build_states(threads)
+        self.built_graph = None
+        self.build_graph()
 
     @staticmethod
     def _flatten_comments_text(comments: list[Comment] | None, depth: int = 0) -> str:
@@ -187,13 +189,14 @@ class Workflow:
             return {"pain_points": []}
 
     @staticmethod
-    def build_states() -> list[State]:
+    def build_states(threads: list[dict] | None = None) -> list[State]:
         def _map_comment(c: dict) -> Comment:
             return {
                 "text": c["body"],
                 "sub_comments": [_map_comment(r) for r in c.get("replies", [])],
             }
 
+        data = threads if threads is not None else load_jsonl(THREADS_PATH)
         return [
             {
                 "post_id": p["id"],
@@ -202,7 +205,7 @@ class Workflow:
                 "comments": [_map_comment(c) for c in p.get("comments", [])],
                 "pain_points": [],
             }
-            for p in load_jsonl(THREADS_PATH)
+            for p in data
         ]
 
     @staticmethod
@@ -217,6 +220,19 @@ class Workflow:
     @staticmethod
     def spawn_post_workers(state: States) -> list[Send]:
         return [Send("process_post", s) for s in state["states_list"]]
+
+    def run(self) -> list[PainPoint]:
+        all_pain_points: list[PainPoint] = []
+        with tqdm(total=len(self.states), desc="Analyzing posts", unit="post") as pbar:
+            for event in self.built_graph.stream(
+                {"states_list": self.states, "pain_points": []},
+                stream_mode="updates",
+            ):
+                if "process_post" in event:
+                    pps = self.deduplicate_by_verbatim(event["process_post"].get("pain_points", []))
+                    all_pain_points.extend(pps)
+                    pbar.update(1)
+        return all_pain_points
 
     def build_graph(self):
         retry_policy = RetryPolicy(
@@ -256,18 +272,7 @@ if __name__ == "__main__":
     THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
     THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
     wf = Workflow()
-    wf.build_graph()
-    all_pain_points: list[PainPoint] = []
-
-    with tqdm(total=len(wf.states), desc="Analyzing posts", unit="post") as pbar:
-        for event in wf.built_graph.stream(
-            {"states_list": wf.states, "pain_points": []},
-            stream_mode="updates",
-        ):
-            if "process_post" in event:
-                pps = Workflow.deduplicate_by_verbatim(event["process_post"].get("pain_points", []))
-                all_pain_points.extend(pps)
-                pbar.update(1)
+    all_pain_points = wf.run()
 
     grouped = defaultdict(list)
     for pp in all_pain_points:

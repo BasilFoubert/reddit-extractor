@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
 from typing import TypedDict
 
 import httpx
+
+from src.agents.extract_pain_points import Workflow
+from src.schemas.schema import PainPoint
 
 _BASE_URL = "https://arctic-shift.photon-reddit.com"
 
@@ -43,14 +45,13 @@ _POST_FIELDS = [
 ]
 
 
-@dataclass
-class CommentNode:
+class CommentNode(TypedDict):
     id: str
     author: str
     body: str
     score: int
     created_utc: int
-    replies: list[CommentNode] = field(default_factory=list)
+    replies: list[CommentNode]
 
 
 class Thread(TypedDict):
@@ -206,6 +207,7 @@ class ThreadsManagerService:
         self.posts: list[Post] = []
         self.comments: list[Comment] = []
         self.threads: list[Thread] = []
+        self.pain_points: list[PainPoint] = []
 
     def download_subreddit(self, after: str, before: str) -> None:
         """Download subreddit posts and comments from Arctic Shift into memory."""
@@ -243,7 +245,8 @@ class ThreadsManagerService:
 
     def extract_pain_points(self) -> int:
         """Extract pain points from threads using LLM. Returns the number of pain points."""
-        pass
+        self.pain_points = Workflow(threads=self.threads).run()
+        return len(self.pain_points)
 
     def filter_pain_points(self) -> int:
         """Filter pain points by urgency threshold. Returns the number of pain points kept."""
