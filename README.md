@@ -1,8 +1,8 @@
 ## Backend
 
 ```bash
-cd backend/src
-uv run fastapi dev api.py
+cd backend
+uv run --env-file ../.env fastapi dev src/main.py
 ```
 
 ---

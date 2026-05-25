@@ -11,6 +11,7 @@ backend/data/raw/
 backend/data/processed/
 backend/data/embeddings/
 backend/data/samples/
+backend/data/tmp
 
 # macOS
 .DS_Store

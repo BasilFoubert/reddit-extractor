@@ -1,10 +1,10 @@
 import uuid
 
-from src.agents.agent import _agent_send_message
+from src.agents.agent import INITIAL_MESSAGE, _agent_send_message
 
 
-def create_conversation() -> str:
-    return str(uuid.uuid4())
+def create_conversation() -> tuple[str, str]:
+    return str(uuid.uuid4()), INITIAL_MESSAGE
 
 
 def agent_send_message(thread_id: str, text: str) -> str:

@@ -10,7 +10,10 @@ export function useChat() {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    createConversation().then(setThreadId)
+    createConversation().then(({ threadId, initialMessage }) => {
+      setThreadId(threadId)
+      setMessages([{ role: 'assistant', content: initialMessage }])
+    })
   }, [])
 
   useEffect(() => {

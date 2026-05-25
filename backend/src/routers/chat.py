@@ -16,6 +16,7 @@ class MessageResponse(BaseModel):
 
 class ConversationResponse(BaseModel):
     thread_id: str
+    initial_message: str
 
 
 @router.get("/health")
@@ -25,8 +26,8 @@ def health():
 
 @router.post("/conversations", response_model=ConversationResponse)
 def new_conversation():
-    thread_id = create_conversation()
-    return ConversationResponse(thread_id=thread_id)
+    thread_id, initial_message = create_conversation()
+    return ConversationResponse(thread_id=thread_id, initial_message=initial_message)
 
 
 @router.post("/conversations/{thread_id}/messages", response_model=MessageResponse)
