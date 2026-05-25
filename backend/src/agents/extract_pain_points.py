@@ -147,6 +147,9 @@ class Workflow:
     @staticmethod
     def spawn_pain_workers(state: State) -> list[Send]:
         comments_text = Workflow._flatten_comments_text(state["comments"])
+        pain_summaries = (
+            state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else []
+        )
         return [
             Send(
                 "pain_point_extractor",
@@ -158,9 +161,7 @@ class Workflow:
                     "pain_summary": ps,
                 },
             )
-            for ps in (
-                state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else []
-            )
+            for ps in pain_summaries
         ]
 
     def pain_point_extractor(self, state: PainWorkerState) -> dict:

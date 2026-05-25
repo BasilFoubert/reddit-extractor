@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import pprint
 import time
+from datetime import datetime
 from typing import TypedDict
 
 import httpx
@@ -201,8 +203,10 @@ def _paginate(client: httpx.Client, endpoint: str, params: dict) -> list[dict]:
 
 
 class ThreadsManagerService:
-    def __init__(self, subreddit_name: str):
-        self.subreddit_name = subreddit_name
+    def __init__(self):
+        self.subreddit_name: str = ""
+        self.start_date: str = ""
+        self.end_date: str = ""
         self.raw_posts: list[dict] = []
         self.raw_comments: list[dict] = []
         self.posts: list[Post] = []
@@ -210,6 +214,15 @@ class ThreadsManagerService:
         self.threads: list[Thread] = []
         self.pain_points: list[PainPoint] = []
         self.filtered_pp: list[PainPoint] = []
+
+    def set_subreddit_name(self, subreddit_name: str) -> None:
+        self.subreddit_name = subreddit_name
+
+    def set_start_date(self, start_date: str) -> None:
+        self.start_date = start_date
+
+    def set_end_date(self, end_date: str) -> None:
+        self.end_date = end_date
 
     def download_subreddit(self, after: str, before: str) -> None:
         """Download subreddit posts and comments from Arctic Shift into memory."""
@@ -250,6 +263,40 @@ class ThreadsManagerService:
         """Filter pain points by urgency threshold."""
         self.filtered_pp = [pp for pp in self.pain_points if pp.urgency >= urgency_threshold]
 
+    def short_print(self) -> None:
+        """Print the first 10 items of each list attribute."""
+        for name, items in [
+            ("raw_posts", self.raw_posts),
+            ("raw_comments", self.raw_comments),
+            ("posts", self.posts),
+            ("comments", self.comments),
+            ("threads", self.threads),
+            ("pain_points", self.pain_points),
+            ("filtered_pp", self.filtered_pp),
+        ]:
+            print(f"\n--- {name} ({len(items)}) ---")
+            for item in items[:10]:
+                data = item.model_dump() if isinstance(item, PainPoint) else item
+                pprint.pprint(data, sort_dicts=False)
+
     def run_pipeline(self) -> None:
         """Run all pipeline steps in order."""
-        pass
+        self.download_subreddit(self.start_date, self.end_date)
+        self.ingest_posts()
+        self.ingest_comments()
+        self.build_threads()
+        self.extract_pain_points()
+        self.filter_pain_points()
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    service = ThreadsManagerService()
+    service.set_subreddit_name("ciso")
+    service.set_start_date(str(int(datetime(2025, 4, 1).timestamp())))
+    service.set_end_date(str(int(datetime(2025, 4, 30, 23, 59, 59).timestamp())))
+    service.run_pipeline()
+    service.short_print()
