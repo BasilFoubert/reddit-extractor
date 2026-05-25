@@ -1,6 +1,6 @@
 import uuid
 
-from src.services.agent import _agent_send_message
+from src.agents.agent import _agent_send_message
 
 
 def create_conversation() -> str:
