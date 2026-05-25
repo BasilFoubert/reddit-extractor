@@ -1,7 +1,7 @@
 from typing import Annotated, TypedDict
 
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
@@ -17,6 +17,10 @@ SYSTEM_PROMPT = (
     "Do not write in markdown, just write normal text without special formating."
 )
 
+POST_BUILD_PROMPT = (
+    "The subreddit has just been downloaded. Recommend the next step: extracting pain points. "
+)
+
 INITIAL_MESSAGE = (
     "Hi! I'm your Reddit market research assistant. "
     "To identify pain points, provide me with a subreddit name to begin with. "
@@ -30,10 +34,18 @@ class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
 
+def _build_system_prompt(messages: list[BaseMessage]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage) and msg.name == "build_user_thread":
+            return SYSTEM_PROMPT + " " + POST_BUILD_PROMPT
+    return SYSTEM_PROMPT
+
+
 def chat_node(state: ChatState) -> ChatState:
     messages = state.get("messages", [])
+    system_prompt = _build_system_prompt(messages)
     try:
-        response = llm.invoke([SystemMessage(content=SYSTEM_PROMPT)] + messages)
+        response = llm.invoke([SystemMessage(content=system_prompt)] + messages)
         return {"messages": [response]}
     except Exception as e:
         error_message = HumanMessage(content=f"Sorry, I encountered an error: {str(e)}")
