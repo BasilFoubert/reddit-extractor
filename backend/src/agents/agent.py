@@ -7,7 +7,12 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from src.agents.tools import build_user_thread, list_tmp_files, run_extract_pain_points
+from src.agents.tools import (
+    build_user_thread,
+    extract_pain_points,
+    filter_pain_points,
+    list_tmp_files,
+)
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant designed to conduct market research by analyzing reddit posts and explore pain points of redditors. "
@@ -19,7 +24,7 @@ SYSTEM_PROMPT = (
 
 POST_BUILD_PROMPT = (
     "The subreddit has just been downloaded. Recommend the next step: extracting pain points "
-    "using run_extract_pain_points with the pickle filename returned above. "
+    "using extract_pain_points with the pickle filename returned above. "
 )
 
 INITIAL_MESSAGE = (
@@ -27,7 +32,7 @@ INITIAL_MESSAGE = (
     "To identify pain points, provide me with a subreddit name to begin with. "
 )
 
-tools = [build_user_thread, list_tmp_files, run_extract_pain_points]
+tools = [build_user_thread, list_tmp_files, extract_pain_points, filter_pain_points]
 llm = init_chat_model("claude-haiku-4-5", model_provider="anthropic").bind_tools(tools)
 
 

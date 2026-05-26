@@ -25,7 +25,7 @@ def list_tmp_files() -> str:
 
 
 @tool
-def run_extract_pain_points(pickle_filename: str) -> str:
+def extract_pain_points(pickle_filename: str) -> str:
     """Load a saved ThreadsManagerService state from a pickle file and run pain point extraction.
 
     Args:
@@ -49,6 +49,39 @@ def run_extract_pain_points(pickle_filename: str) -> str:
     return (
         f"Extracted {len(svc.pain_points)} pain points from {len(svc.threads)} threads "
         f"(r/{svc.subreddit_name}).\n"
+        f"State saved to: {pickle_path}"
+    )
+
+
+@tool
+def filter_pain_points(pickle_filename: str, urgency_threshold: int = 6) -> str:
+    """Load a saved ThreadsManagerService state and filter pain points by urgency score.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+        urgency_threshold: minimum urgency score to keep (1–10, default 6)
+
+    Returns:
+        A summary of filtered pain points, and the updated state saved back to the same file.
+    """
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    if not svc.pain_points:
+        return "No pain points found in this state. Run run_extract_pain_points first."
+
+    svc.filter_pain_points(urgency_threshold=urgency_threshold)
+
+    with open(pickle_path, "wb") as f:
+        pickle.dump(svc, f)
+
+    return (
+        f"Filtered to {len(svc.filtered_pp)} pain points (urgency >= {urgency_threshold}) "
+        f"out of {len(svc.pain_points)} total (r/{svc.subreddit_name}).\n"
         f"State saved to: {pickle_path}"
     )
 
