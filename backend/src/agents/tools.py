@@ -10,6 +10,50 @@ _TMP_DIR = Path(__file__).parents[2] / "data" / "tmp"
 
 
 @tool
+def list_tmp_files() -> str:
+    """List all saved pipeline state files available in the temporary directory.
+
+    Returns:
+        A list of pickle filenames with their sizes, or a message if none exist.
+    """
+    _TMP_DIR.mkdir(parents=True, exist_ok=True)
+    pkl_files = sorted(_TMP_DIR.glob("*.pkl"))
+    if not pkl_files:
+        return "No saved state files found in the temporary directory."
+    lines = [f"{f.name} ({f.stat().st_size // 1024} KB)" for f in pkl_files]
+    return "Saved state files:\n" + "\n".join(lines)
+
+
+@tool
+def run_extract_pain_points(pickle_filename: str) -> str:
+    """Load a saved ThreadsManagerService state from a pickle file and run pain point extraction.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+
+    Returns:
+        A summary of extracted pain points, and the updated state saved back to the same file.
+    """
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    svc.extract_pain_points()
+
+    with open(pickle_path, "wb") as f:
+        pickle.dump(svc, f)
+
+    return (
+        f"Extracted {len(svc.pain_points)} pain points from {len(svc.threads)} threads "
+        f"(r/{svc.subreddit_name}).\n"
+        f"State saved to: {pickle_path}"
+    )
+
+
+@tool
 def build_user_thread(subreddit: str, start_date: str, end_date: str) -> str:
     """Download and preprocess Reddit threads for a subreddit over a date range.
     Runs download, ingest, and thread-building stages, then saves state to a pickle file
