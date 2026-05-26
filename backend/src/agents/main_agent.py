@@ -12,6 +12,7 @@ from src.agents.tools import (
     extract_pain_points,
     filter_pain_points,
     list_tmp_files,
+    spot_clusters,
 )
 
 SYSTEM_PROMPT = (
@@ -32,7 +33,7 @@ INITIAL_MESSAGE = (
     "To identify pain points, provide me with a subreddit name to begin with. "
 )
 
-tools = [build_user_thread, list_tmp_files, extract_pain_points, filter_pain_points]
+tools = [build_user_thread, list_tmp_files, extract_pain_points, filter_pain_points, spot_clusters]
 llm = init_chat_model("claude-haiku-4-5", model_provider="anthropic").bind_tools(tools)
 
 

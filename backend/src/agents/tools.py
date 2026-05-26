@@ -87,6 +87,22 @@ def filter_pain_points(pickle_filename: str, urgency_threshold: int = 6) -> str:
 
 
 @tool
+def spot_clusters(pickle_filename: str) -> str:
+    """Run hierarchical semantic clustering on filtered pain points from a saved pipeline state.
+
+    Phase 1 groups pain points into tight micro-clusters via LLM-validated k-NN similarity.
+    Phase 2 consolidates micro-clusters into broader macro-categories using an LLM.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+
+    Returns:
+        A summary of the macro-categories found, and the updated state saved back to the same file.
+    """
+    pass
+
+
+@tool
 def build_user_thread(subreddit: str, start_date: str, end_date: str) -> str:
     """Download and preprocess Reddit threads for a subreddit over a date range.
     Runs download, ingest, and thread-building stages, then saves state to a pickle file

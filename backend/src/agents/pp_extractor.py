@@ -90,7 +90,7 @@ class States(TypedDict):
     pain_points: Annotated[list[PainPoint], add]
 
 
-class Workflow:
+class PPExtractorWorkflow:
     MODEL = "claude-haiku-4-5"
 
     def __init__(self, threads: list[dict] | None = None):
@@ -112,7 +112,9 @@ class Workflow:
         for c in comments or []:
             lines.append("  " * depth + "- " + c["text"])
             lines.extend(
-                Workflow._flatten_comments_text(c.get("sub_comments"), depth + 1).splitlines()
+                PPExtractorWorkflow._flatten_comments_text(
+                    c.get("sub_comments"), depth + 1
+                ).splitlines()
             )
         return "\n".join(lines)
 
@@ -146,7 +148,7 @@ class Workflow:
 
     @staticmethod
     def spawn_pain_workers(state: State) -> list[Send]:
-        comments_text = Workflow._flatten_comments_text(state["comments"])
+        comments_text = PPExtractorWorkflow._flatten_comments_text(state["comments"])
         pain_summaries = (
             state["post_pain_summary"].pain_summaries if state.get("post_pain_summary") else []
         )
@@ -272,7 +274,7 @@ if __name__ == "__main__":
     # THREADS_PATH_TEST = Path("data/processed/r_ciso_pain_points.jsonl")
     THREADS_PATH = Path("tests/data/small_subreddit.jsonl")
     THREADS_PATH_TEST = Path("tests/data/small_subreddit_pain_points.jsonl")
-    wf = Workflow()
+    wf = PPExtractorWorkflow()
     all_pain_points = wf.run()
 
     grouped = defaultdict(list)
