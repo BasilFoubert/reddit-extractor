@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import pickle
 import pprint
 import time
 from datetime import datetime
 from typing import TypedDict
 
 import httpx
+from sentence_transformers import SentenceTransformer
 
-from src.agents.extract_pain_points import Workflow
+from src.agents.pp_extractor import PPExtractorWorkflow
 from src.schemas.schema import PainPoint
 
 _BASE_URL = "https://arctic-shift.photon-reddit.com"
+_EMBED_MODEL = "nomic-ai/nomic-embed-text-v1.5"
 
 _ENDPOINTS = {
     "posts": "api/posts/search",
@@ -214,6 +217,8 @@ class ThreadsManagerService:
         self.threads: list[Thread] = []
         self.pain_points: list[PainPoint] = []
         self.filtered_pp: list[PainPoint] = []
+        self.faiss_index = None
+        self._model: SentenceTransformer | None = None
 
     def set_subreddit_name(self, subreddit_name: str) -> None:
         self.subreddit_name = subreddit_name
@@ -257,11 +262,20 @@ class ThreadsManagerService:
 
     def extract_pain_points(self):
         """Extract pain points from threads using LLM."""
-        self.pain_points = Workflow(threads=self.threads).run()
+        self.pain_points = PPExtractorWorkflow(threads=self.threads).run()
 
     def filter_pain_points(self, urgency_threshold: int = _URGENCY_THRESHOLD):
         """Filter pain points by urgency threshold."""
         self.filtered_pp = [pp for pp in self.pain_points if pp.urgency >= urgency_threshold]
+
+    def embed_pain_points(self) -> None:
+        import faiss
+        source = self.filtered_pp if self.filtered_pp else self.pain_points
+        self.embedding_model = SentenceTransformer(_EMBED_MODEL, trust_remote_code=True)
+        texts = [pp.pain_point_reformulated for pp in source]
+        embeddings = self.embedding_model.encode(texts, show_progress_bar=True, normalize_embeddings=True)
+        self.faiss_index = faiss.IndexFlatIP(embeddings.shape[1])
+        self.faiss_index.add(embeddings.astype("float32"))
 
     def short_print(self) -> None:
         """Print the first 10 items of each list attribute."""
