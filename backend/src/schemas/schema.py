@@ -31,3 +31,9 @@ class PostPainSummary(BaseModel):
 class Comment(TypedDict):
     text: str
     sub_comments: list[Comment] | None
+
+
+class MacroCluster(TypedDict):
+    label: str
+    description: str
+    pain_points: list[PainPoint]

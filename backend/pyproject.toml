@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.99.0",
+    "chromadb>=1.5.9",
     "einops>=0.8.2",
-    "faiss-cpu>=1.14.2",
     "fastapi[standard]>=0.136.1",
     "hdbscan>=0.8.42",
     "langchain>=1.2.17",
