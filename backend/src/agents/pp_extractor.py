@@ -12,8 +12,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy, Send
 from tqdm import tqdm
 
-from src.core.utils import load_jsonl, save_jsonl
 from src.schemas.schema import Comment, PainPoint, PainSummary, PostPainSummary
+from src.utils.utils import load_jsonl, save_jsonl
 
 thread_scan_prompt = ChatPromptTemplate.from_messages(
     [

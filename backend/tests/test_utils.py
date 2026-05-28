@@ -1,4 +1,4 @@
-from src.core.utils import filter_pp_by_urgency, load_jsonl, load_pain_points
+from src.utils.utils import filter_pp_by_urgency, load_jsonl, load_pain_points
 
 
 def test_load_jsonl():
