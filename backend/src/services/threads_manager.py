@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pprint
 import time
-from datetime import datetime
 from typing import TypedDict
 
 import httpx
@@ -294,6 +293,7 @@ class ThreadsManagerService:
         self.build_threads()
         self.extract_pain_points()
         self.filter_pain_points()
+        self.spot_clusters()
 
 
 if __name__ == "__main__":
@@ -301,9 +301,26 @@ if __name__ == "__main__":
 
     load_dotenv()
 
-    service = ThreadsManagerService()
-    service.set_subreddit_name("ciso")
-    service.set_start_date(str(int(datetime(2025, 4, 1).timestamp())))
-    service.set_end_date(str(int(datetime(2025, 4, 30, 23, 59, 59).timestamp())))
-    service.run_pipeline()
-    service.short_print()
+    # run full pipeline
+    # service = ThreadsManagerService()
+    # service.set_subreddit_name("ciso")
+    # service.set_start_date(str(int(datetime(2025, 4, 1).timestamp())))
+    # service.set_end_date(str(int(datetime(2025, 4, 30, 23, 59, 59).timestamp())))
+    # service.run_pipeline()
+    # service.short_print()
+
+    # run only pain points clusters identification
+    # import pickle
+    # from pathlib import Path
+    # _pkl_path = Path(__file__).parents[2] / "tests" / "data" / "ciso_2026-04-01_2026-04-30.pkl"
+    # with open(_pkl_path, "rb") as f:
+    #     service: ThreadsManagerService = pickle.load(f)
+
+    # print(f"Loaded: {len(service.pain_points)} pain points, {len(service.filtered_pp)} filtered")
+    # service.spot_clusters()
+    # pprint.pprint([c for c in service.clusters], sort_dicts=False)
+
+    # _out_path = _pkl_path.with_stem(_pkl_path.stem + "_clustered")
+    # with open(_out_path, "wb") as f:
+    #     pickle.dump(service, f)
+    # print(f"Saved to: {_out_path}")
