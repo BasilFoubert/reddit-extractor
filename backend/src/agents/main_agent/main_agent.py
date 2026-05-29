@@ -7,7 +7,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from src.agents.tools import (
+from src.agents.main_agent.tools import (
     build_user_thread,
     extract_pain_points,
     filter_pain_points,

@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 
 from src.services.threads_manager import ThreadsManagerService
 
-_TMP_DIR = Path(__file__).parents[2] / "data" / "tmp"
+_TMP_DIR = Path(__file__).parents[3] / "data" / "tmp"
 
 
 @tool

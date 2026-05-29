@@ -1,6 +1,6 @@
 import uuid
 
-from src.agents.agent import INITIAL_MESSAGE, _agent_send_message
+from src.agents.main_agent.main_agent import INITIAL_MESSAGE, _agent_send_message
 
 
 def create_conversation() -> tuple[str, str]:
