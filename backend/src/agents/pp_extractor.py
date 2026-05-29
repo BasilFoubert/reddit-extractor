@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Annotated, TypedDict
 
 from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy, Send
 from tqdm import tqdm
 
+from src.core.llm import get_llm
 from src.schemas.schema import Comment, PainPoint, PainSummary, PostPainSummary
 from src.utils.utils import load_jsonl, save_jsonl
 
@@ -91,10 +91,8 @@ class States(TypedDict):
 
 
 class PPExtractorWorkflow:
-    MODEL = "claude-haiku-4-5"
-
     def __init__(self, threads: list[dict] | None = None):
-        self.llm = init_chat_model(self.MODEL)
+        self.llm = get_llm()
         self.thread_scan_pipe = thread_scan_prompt | self.llm.with_structured_output(
             PostPainSummary
         )

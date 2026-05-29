@@ -1,6 +1,5 @@
 from typing import Annotated, TypedDict
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -17,6 +16,7 @@ from src.agents.main_agent.tools import (
     list_tmp_files,
     spot_clusters,
 )
+from src.core.llm import get_llm
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant designed to conduct market research by analyzing reddit posts and explore pain points of redditors. "
@@ -71,7 +71,7 @@ tools = [
     list_clusters,
     get_cluster,
 ]
-llm = init_chat_model("claude-haiku-4-5", model_provider="anthropic").bind_tools(tools)
+llm = get_llm().bind_tools(tools)
 
 
 class ChatState(TypedDict):

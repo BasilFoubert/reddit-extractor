@@ -5,11 +5,11 @@ from typing import Annotated, TypedDict
 
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
+from src.core.llm import get_llm
 from src.schemas.schema import MacroCluster, PainPoint
 
 _EMBED_MODEL = "nomic-ai/nomic-embed-text-v1.5"
@@ -125,7 +125,7 @@ class ClusteringState(TypedDict):
 class ClusterBuilderWorkflow:
     def __init__(self, pain_points: list[PainPoint]):
         self.collection = self._build_collection(pain_points)
-        self.llm = init_chat_model("claude-haiku-4-5")
+        self.llm = get_llm()
         self.strict_filter_pipe = strict_filter_prompt | self.llm.with_structured_output(
             FilterResult
         )
