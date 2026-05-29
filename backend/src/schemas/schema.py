@@ -34,6 +34,5 @@ class Comment(TypedDict):
 
 
 class MacroCluster(TypedDict):
-    label: str
     description: str
     pain_points: list[PainPoint]
