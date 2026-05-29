@@ -25,6 +25,39 @@ def list_tmp_files() -> str:
 
 
 @tool
+def inspect_state(pickle_filename: str) -> str:
+    """Inspect the current pipeline state of a saved pickle file.
+
+    Reports what has already been computed: threads, pain points, filtered pain points, clusters.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+
+    Returns:
+        A summary of what is already available in the state.
+    """
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    lines = [f"State for r/{svc.subreddit_name}:"]
+    lines.append(f"  threads:        {len(svc.threads)}")
+    lines.append(
+        f"  pain_points:    {len(svc.pain_points)} {'✓' if svc.pain_points else '✗ not extracted yet'}"
+    )
+    lines.append(
+        f"  filtered_pp:    {len(svc.filtered_pp)} {'✓' if svc.filtered_pp else '✗ not filtered yet'}"
+    )
+    lines.append(
+        f"  clusters:       {len(svc.clusters)} {'✓' if svc.clusters else '✗ not clustered yet'}"
+    )
+    return "\n".join(lines)
+
+
+@tool
 def extract_pain_points(pickle_filename: str) -> str:
     """Load a saved ThreadsManagerService state from a pickle file and run pain point extraction.
 
@@ -97,9 +130,91 @@ def spot_clusters(pickle_filename: str) -> str:
         pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
 
     Returns:
-        A summary of the macro-categories found, and the updated state saved back to the same file.
+        Confirmation that clustering completed and how many macro-clusters were found.
     """
-    pass
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    source = svc.filtered_pp if svc.filtered_pp else svc.pain_points
+    if not source:
+        return "No pain points found in this state. Run extract_pain_points first."
+
+    svc.spot_clusters()
+
+    with open(pickle_path, "wb") as f:
+        pickle.dump(svc, f)
+
+    n = len(svc.clusters)
+    return (
+        f"Clustering complete: {n} macro-cluster{'s' if n != 1 else ''} found "
+        f"from {len(source)} pain points (r/{svc.subreddit_name}).\n"
+        f"State saved to: {pickle_path}"
+    )
+
+
+@tool
+def list_clusters(pickle_filename: str) -> str:
+    """List all macro-clusters from a saved pipeline state with their descriptions and sizes.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+
+    Returns:
+        A numbered list of macro-clusters with description and pain point count for each.
+    """
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    if not svc.clusters:
+        return "No clusters found in this state. Run spot_clusters first."
+
+    lines = [f"{len(svc.clusters)} macro-clusters (r/{svc.subreddit_name}):\n"]
+    for i, cluster in enumerate(svc.clusters, 1):
+        lines.append(f"{i}. {cluster['description']} — {len(cluster['pain_points'])} pain points")
+    return "\n".join(lines)
+
+
+@tool
+def get_cluster(pickle_filename: str, cluster_index: int) -> str:
+    """Get the full details of a specific macro-cluster, including all its pain points.
+
+    Args:
+        pickle_filename: filename of the pickle file (e.g. "ciso_2025-01-01_2025-01-31.pkl")
+        cluster_index: 1-based index of the cluster (as shown by list_clusters)
+
+    Returns:
+        The cluster description and all its pain points with verbatim quotes and urgency scores.
+    """
+    pickle_path = _TMP_DIR / pickle_filename
+    if not pickle_path.exists():
+        return f"File not found: {pickle_filename}. Use list_tmp_files to see available files."
+
+    with open(pickle_path, "rb") as f:
+        svc: ThreadsManagerService = pickle.load(f)
+
+    if not svc.clusters:
+        return "No clusters found in this state. Run spot_clusters first."
+
+    if cluster_index < 1 or cluster_index > len(svc.clusters):
+        return f"Invalid index {cluster_index}. There are {len(svc.clusters)} clusters (1–{len(svc.clusters)})."
+
+    cluster = svc.clusters[cluster_index - 1]
+    lines = [
+        f"Cluster {cluster_index}: {cluster['description']}",
+        f"{len(cluster['pain_points'])} pain points:\n",
+    ]
+    for i, pp in enumerate(cluster["pain_points"], 1):
+        lines.append(f"{i}. [{pp.urgency}/10] {pp.pain_point_reformulated}")
+        lines.append(f'   "{pp.verbatim}"')
+    return "\n".join(lines)
 
 
 @tool

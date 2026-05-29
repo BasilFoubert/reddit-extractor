@@ -217,6 +217,12 @@ class ThreadsManagerService:
         self.filtered_pp: list[PainPoint] = []
         self.clusters: list[MacroCluster] = []
 
+    def __setstate__(self, state: dict) -> None:
+        # backward compat: pickles saved before `clusters` was introduced
+        self.__dict__.update(state)
+        if not hasattr(self, "clusters"):
+            self.clusters = []
+
     def set_subreddit_name(self, subreddit_name: str) -> None:
         self.subreddit_name = subreddit_name
 

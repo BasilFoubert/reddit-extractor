@@ -255,7 +255,9 @@ class ClusterBuilderWorkflow:
         return "loop" if state["pain_points"] else "done"
 
     def run(self) -> list[MacroCluster]:
-        return self.built_graph.invoke(self.initial_state)["clusters"]
+        n = len(self.initial_state["pain_points"])
+        config = {"recursion_limit": n + 10}
+        return self.built_graph.invoke(self.initial_state, config=config)["clusters"]
 
     def _build_graph(self):
         graph = StateGraph(ClusteringState)

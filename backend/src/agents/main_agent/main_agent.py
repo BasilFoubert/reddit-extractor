@@ -11,6 +11,9 @@ from src.agents.main_agent.tools import (
     build_user_thread,
     extract_pain_points,
     filter_pain_points,
+    get_cluster,
+    inspect_state,
+    list_clusters,
     list_tmp_files,
     spot_clusters,
 )
@@ -28,12 +31,46 @@ POST_BUILD_PROMPT = (
     "using extract_pain_points with the pickle filename returned above. "
 )
 
+POST_INSPECT_STATE_PROMPT = (
+    "The pipeline state has just been inspected. Based on what is already computed, "
+    "tell the user clearly what steps are done and what remains. "
+    "Then recommend the next logical step and offer to run it."
+)
+
+POST_SPOT_CLUSTERS_PROMPT = (
+    "The clustering just ran. Confirm to the user how many macro-clusters were found, "
+    "then suggest calling list_clusters to see the full overview."
+)
+
+POST_LIST_CLUSTERS_PROMPT = (
+    "The macro-clusters have just been listed. Present them as a clean numbered list: "
+    "for each cluster give its description and pain point count. "
+    "After the list, invite the user to explore any cluster in detail by asking which one interests them — "
+    "you will then call get_cluster with its index."
+)
+
+POST_GET_CLUSTER_PROMPT = (
+    "A macro-cluster's full details have just been returned. "
+    "Present the pain points clearly: group the most urgent ones (8-10) first, then the rest. "
+    "After listing them, give a short synthesis: what is the core frustration, who is affected, "
+    "and what kind of solution or product could address it. Keep it concise."
+)
+
 INITIAL_MESSAGE = (
     "Hi! I'm your Reddit market research assistant. "
     "To identify pain points, provide me with a subreddit name to begin with. "
 )
 
-tools = [build_user_thread, list_tmp_files, extract_pain_points, filter_pain_points, spot_clusters]
+tools = [
+    build_user_thread,
+    list_tmp_files,
+    inspect_state,
+    extract_pain_points,
+    filter_pain_points,
+    spot_clusters,
+    list_clusters,
+    get_cluster,
+]
 llm = init_chat_model("claude-haiku-4-5", model_provider="anthropic").bind_tools(tools)
 
 
@@ -43,7 +80,17 @@ class ChatState(TypedDict):
 
 def _build_system_prompt(messages: list[BaseMessage]) -> str:
     for msg in reversed(messages):
-        if isinstance(msg, ToolMessage) and msg.name == "build_user_thread":
+        if not isinstance(msg, ToolMessage):
+            continue
+        if msg.name == "inspect_state":
+            return SYSTEM_PROMPT + " " + POST_INSPECT_STATE_PROMPT
+        if msg.name == "spot_clusters":
+            return SYSTEM_PROMPT + " " + POST_SPOT_CLUSTERS_PROMPT
+        if msg.name == "list_clusters":
+            return SYSTEM_PROMPT + " " + POST_LIST_CLUSTERS_PROMPT
+        if msg.name == "get_cluster":
+            return SYSTEM_PROMPT + " " + POST_GET_CLUSTER_PROMPT
+        if msg.name == "build_user_thread":
             return SYSTEM_PROMPT + " " + POST_BUILD_PROMPT
     return SYSTEM_PROMPT
 
