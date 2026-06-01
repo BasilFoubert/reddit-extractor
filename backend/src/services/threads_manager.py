@@ -5,6 +5,7 @@ import time
 from typing import TypedDict
 
 import httpx
+from langsmith import traceable
 
 from src.agents.pp_cluster_builder import ClusterBuilderWorkflow
 from src.agents.pp_extractor import PPExtractorWorkflow
@@ -263,6 +264,7 @@ class ThreadsManagerService:
         """Assemble posts and comments into threads."""
         self.threads = _build_thread_list(self.posts, self.comments)
 
+    @traceable(name="ThreadsManagerService.extract_pain_points", run_type="chain")
     def extract_pain_points(self):
         """Extract pain points from threads using LLM."""
         self.pain_points = PPExtractorWorkflow(threads=self.threads).run()
@@ -271,6 +273,7 @@ class ThreadsManagerService:
         """Filter pain points by urgency threshold."""
         self.filtered_pp = [pp for pp in self.pain_points if pp.urgency >= urgency_threshold]
 
+    @traceable(name="ThreadsManagerService.spot_clusters", run_type="chain")
     def spot_clusters(self) -> None:
         source = self.filtered_pp if self.filtered_pp else self.pain_points
         self.clusters = ClusterBuilderWorkflow(pain_points=source).run()
@@ -291,6 +294,7 @@ class ThreadsManagerService:
                 data = item.model_dump() if isinstance(item, PainPoint) else item
                 pprint.pprint(data, sort_dicts=False)
 
+    @traceable(name="ThreadsManagerService.run_pipeline", run_type="chain")
     def run_pipeline(self) -> None:
         """Run all pipeline steps in order."""
         self.download_subreddit(self.start_date, self.end_date)

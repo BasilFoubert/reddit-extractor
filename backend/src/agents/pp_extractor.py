@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy, Send
+from langsmith import traceable
 from tqdm import tqdm
 
 from src.core.llm import get_llm
@@ -222,6 +223,7 @@ class PPExtractorWorkflow:
     def spawn_post_workers(state: States) -> list[Send]:
         return [Send("process_post", s) for s in state["states_list"]]
 
+    @traceable(name="PPExtractorWorkflow.run", run_type="chain")
     def run(self) -> list[PainPoint]:
         all_pain_points: list[PainPoint] = []
         with tqdm(total=len(self.states), desc="Analyzing posts", unit="post") as pbar:

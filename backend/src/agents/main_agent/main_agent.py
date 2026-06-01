@@ -5,6 +5,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
+from langsmith import traceable
 
 from src.agents.main_agent.tools import (
     build_user_thread,
@@ -120,6 +121,7 @@ workflow.add_edge("tools", "agent")
 graph = workflow.compile(checkpointer=MemorySaver())
 
 
+@traceable(name="agent_send_message", run_type="chain")
 def _agent_send_message(text: str, thread_id: str = "default") -> str:
     config = {"configurable": {"thread_id": thread_id}}
     result = graph.invoke({"messages": [HumanMessage(content=text)]}, config=config)

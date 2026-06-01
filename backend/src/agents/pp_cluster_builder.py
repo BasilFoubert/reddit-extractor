@@ -7,6 +7,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from src.core.llm import get_llm
@@ -254,6 +255,7 @@ class ClusterBuilderWorkflow:
     def _should_continue(self, state: ClusteringState) -> str:
         return "loop" if state["pain_points"] else "done"
 
+    @traceable(name="ClusterBuilderWorkflow.run", run_type="chain")
     def run(self) -> list[MacroCluster]:
         n = len(self.initial_state["pain_points"])
         config = {"recursion_limit": n + 10}
