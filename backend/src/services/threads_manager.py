@@ -278,6 +278,36 @@ class ThreadsManagerService:
         source = self.filtered_pp if self.filtered_pp else self.pain_points
         self.clusters = ClusterBuilderWorkflow(pain_points=source).run()
 
+    def flatten_dataset(self) -> list[dict]:
+        return [
+            {
+                "verbatim": pp.verbatim,
+                "pain_point_reformulated": pp.pain_point_reformulated,
+                "cluster_description": c["description"],
+            }
+            for c in self.clusters
+            for pp in c["pain_points"]
+        ]
+
+    def stats(self) -> None:
+        total_clusters = len(self.clusters)
+        pps_per_cluster = [len(c["pain_points"]) for c in self.clusters]
+        pps_in_clusters = sum(pps_per_cluster)
+        total_comments = sum(t["num_comments"] for t in self.threads)
+
+        print(f"Subreddit                   : {self.subreddit_name}")
+        print(f"Period                      : {self.start_date} → {self.end_date}")
+        print()
+        print(f"Threads                     : {len(self.threads)}")
+        print(f"Comments                    : {total_comments}")
+        print()
+        print(f"Pain points                 : {len(self.pain_points)}")
+        if total_clusters:
+            print(f"Clusters                    : {total_clusters}")
+            print(f"PP in clusters              : {pps_in_clusters}")
+            print(f"Avg per cluster             : {pps_in_clusters / total_clusters:.1f}")
+            print(f"Min & Max PP per cluster    : {min(pps_per_cluster)} / {max(pps_per_cluster)}")
+
     def short_print(self) -> None:
         """Print the first 10 items of each list attribute."""
         for name, items in [
