@@ -28,14 +28,22 @@ SYSTEM_PROMPT = (
 )
 
 POST_BUILD_PROMPT = (
-    "The subreddit has just been downloaded. Recommend the next step: extracting pain points "
-    "using extract_pain_points with the pickle filename returned above. "
+    "The subreddit has just been downloaded. "
+    "Let the user know that the next step would be to extract pain points, "
+    "and ask if they would like to proceed — do NOT call extract_pain_points automatically."
+)
+
+POST_EXTRACT_PAIN_POINTS_PROMPT = (
+    "Pain point extraction has just completed. "
+    "Let the user know the results are ready and that the next step would be clustering, "
+    "and ask if they would like to proceed — do NOT call spot_clusters automatically."
 )
 
 POST_INSPECT_STATE_PROMPT = (
     "The pipeline state has just been inspected. Based on what is already computed, "
     "tell the user clearly what steps are done and what remains. "
-    "Then recommend the next logical step and offer to run it."
+    "Then recommend the next logical step and ask if they would like to proceed — "
+    "do NOT call any tool automatically."
 )
 
 POST_SPOT_CLUSTERS_PROMPT = (
@@ -85,6 +93,8 @@ def _build_system_prompt(messages: list[BaseMessage]) -> str:
             continue
         if msg.name == "inspect_state":
             return SYSTEM_PROMPT + " " + POST_INSPECT_STATE_PROMPT
+        if msg.name == "extract_pain_points":
+            return SYSTEM_PROMPT + " " + POST_EXTRACT_PAIN_POINTS_PROMPT
         if msg.name == "spot_clusters":
             return SYSTEM_PROMPT + " " + POST_SPOT_CLUSTERS_PROMPT
         if msg.name == "list_clusters":
