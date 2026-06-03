@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Collaboration rules
+
+- Before doing any exploratory search (grepping, reading unfamiliar files, inspecting package sources, spawning agents for research), ask the user to provide the missing information directly. Do not search on your own — it wastes tokens.
+
 ## Commands
 
 Run all commands from the `backend/` directory:
